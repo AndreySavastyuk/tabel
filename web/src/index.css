@@ -1,0 +1,162 @@
+:root {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --border: #e2e5ea;
+  --text: #1f2430;
+  --muted: #7a8290;
+  --accent: #2f6fed;
+  --accent-bg: #eaf1ff;
+  --error-bg: #ffe1e1;
+  --error: #b00020;
+  font-family: 'Segoe UI', system-ui, Arial, sans-serif;
+  color: var(--text);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); }
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: #fff;
+  border-radius: 6px;
+  padding: 7px 14px;
+  font-size: 14px;
+}
+button:hover { filter: brightness(1.05); }
+button:disabled { opacity: 0.6; cursor: default; }
+input {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 14px;
+  background: #fff;
+}
+.muted { color: var(--muted); font-weight: 400; }
+.error { background: var(--error-bg); color: var(--error); padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+
+/* layout */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  height: 56px;
+}
+.brand { font-weight: 700; font-size: 17px; }
+.topbar nav { display: flex; gap: 6px; flex: 1; }
+.topbar nav a {
+  text-decoration: none;
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+}
+.topbar nav a.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.userbox { display: flex; align-items: center; gap: 12px; }
+.userbox button { background: #fff; color: var(--text); }
+.content { padding: 22px; max-width: 1200px; margin: 0 auto; }
+
+.pagehead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.pagehead h2 { margin: 0; }
+.searchbar { display: flex; gap: 8px; }
+
+/* table */
+table.grid { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 8px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+table.grid th, table.grid td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+table.grid thead th { background: #eef1f5; color: #46506180; color: #465061; font-weight: 600; position: sticky; top: 0; }
+table.grid tbody tr:hover { background: #f7f9fc; }
+
+/* centered (login/loading) */
+.center { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+.login { width: 320px; display: flex; flex-direction: column; gap: 14px; }
+.login h1 { margin: 0 0 6px; font-size: 20px; text-align: center; }
+.login label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.login .hint { text-align: center; font-size: 12px; }
+
+/* panels / uploads */
+.panel { margin-bottom: 18px; }
+.panel h3 { margin: 0 0 4px; }
+.uploads { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+.uploadbox { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); border: 1px dashed var(--border); border-radius: 8px; padding: 12px; min-width: 200px; }
+.uploadbox .ok { color: #1a7f37; font-style: normal; font-size: 12px; }
+
+/* status badges */
+.badge { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.st-queued { background: #eef1f5; color: #465061; }
+.st-running { background: #fff4d6; color: #8a6d00; }
+.st-done { background: #d8f5dd; color: #1a7f37; }
+.st-failed { background: #ffd7d7; color: #b00020; }
+
+/* buttons as links */
+button.link, button.ghost { background: #fff; color: var(--accent); border-color: var(--border); padding: 5px 10px; }
+button.ghost { color: var(--text); }
+.actions { display: flex; gap: 8px; }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin: 6px 0 16px; flex-wrap: wrap; }
+.tab { background: transparent; color: var(--muted); border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 14px; margin-bottom: -2px; }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+/* report tables */
+.deptblock { margin-bottom: 26px; }
+.deptblock h3 { margin: 0 0 8px; font-size: 15px; }
+.totalrow td { background: #eef1f5; font-weight: 600; }
+.we { background: #ddebf7; }                 /* выходной */
+.miss { background: #ffc7ce; font-weight: 700; }  /* нет отметки / часов */
+.lez { background: #ffeb9c; }                /* источник ЛЭЗ */
+.fix { background: #c6efce; font-weight: 700; }   /* подмена на фикс. время */
+.bad { background: #ffc7ce; font-weight: 700; text-align: left; }
+.lowrow td { background: #ffe1e1; }          /* < 50% нормы */
+.warn-txt { background: #ffeb9c; padding: 1px 6px; border-radius: 4px; }
+.warn-cell { background: #ffeb9c; }
+.ok-box { background: #d8f5dd; color: #1a7f37; padding: 10px 14px; border-radius: 8px; }
+
+/* absences form */
+.absform .absrow { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; margin: 10px 0; }
+.absform label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+.absform .grow { flex: 1; min-width: 180px; }
+.absform select { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 14px; background: #fff; }
+select { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 14px; background: #fff; }
+.chk { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+
+/* bulk-assign bar */
+.assignbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.selrow td { background: #eaf1ff; }
+
+/* norms grid */
+.normsgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+.normcell { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.normcell input { width: 100%; }
+
+/* employee card */
+.empmeta { display: flex; gap: 24px; flex-wrap: wrap; padding: 14px 18px; }
+.empmeta b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+table.grid.inner { box-shadow: none; border-radius: 0; margin: 0; }
+table.grid.inner thead th { background: #f3f5f8; }
+
+/* production calendar */
+.callegend { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin: 8px 0 16px; font-size: 13px; }
+.callegend .cd { display: inline-block; width: 13px; height: 13px; border-radius: 3px; margin-right: 5px; vertical-align: -2px; border: 1px solid var(--border); }
+.cd.holiday { background: #ffc7ce; }
+.cd.dayoff { background: #ffc7ce; border-style: dashed; }
+.cd.override { background: #c6efce; }
+.cd.weekend { background: #e6e9ee; }
+.cd.short { background: #fff; box-shadow: inset 0 -3px 0 #f0a500; }
+.calyear { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.mhours { font-weight: 400; color: var(--accent); font-size: 13px; }
+.calmonth { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+.calmonth h4 { margin: 0 0 8px; font-size: 14px; text-align: center; }
+.calgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.calhd { text-align: center; font-size: 11px; color: var(--muted); padding-bottom: 2px; }
+.calday { display: flex; align-items: center; justify-content: center; height: 26px; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--text); font-size: 12px; }
+.calday.weekend { background: #e6e9ee; color: var(--muted); }
+.calday.holiday { background: #ffc7ce; font-weight: 700; }
+.calday.dayoff { background: #ffc7ce; border-style: dashed; border-color: #d06; }  /* перенесённый выходной */
+.calday.override { background: #c6efce; font-weight: 700; }
+.calday.short { box-shadow: inset 0 -3px 0 #f0a500; }   /* предпраздничный */
+.calday.today { border: 2px solid var(--accent); font-weight: 700; }   /* сегодня */
+@media (max-width: 900px) { .calyear { grid-template-columns: repeat(2, 1fr); } }
