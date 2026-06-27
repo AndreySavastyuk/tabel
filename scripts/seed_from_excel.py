@@ -9,7 +9,6 @@
 """
 import os
 import sys
-from datetime import date, datetime, timezone
 
 import openpyxl
 
@@ -159,6 +158,21 @@ def seed_calendar(db, year_from=2025, year_to=2027):
 
 
 def seed_users(db, dept_ids):
+    # В проде НЕ заводим дев-юзеров со слабыми паролями (admin/admin и т.п.).
+    # Создаём одного admin с паролем из TABEL_BOOTSTRAP_ADMIN_PASSWORD или падаем.
+    if settings.is_prod:
+        pw = os.environ.get("TABEL_BOOTSTRAP_ADMIN_PASSWORD")
+        if not pw or len(pw) < 12:
+            raise SystemExit(
+                "TABEL_ENV=prod: отказ заводить дев-юзеров. Задайте "
+                "TABEL_BOOTSTRAP_ADMIN_PASSWORD (>=12 символов) для создания "
+                "начального admin, либо заводите пользователей вне сидера."
+            )
+        if db.query(User).filter_by(username="admin").one_or_none() is None:
+            db.add(User(username="admin", password_hash=security.hash_password(pw),
+                        role=Role.admin_hr.value))
+        return  # никаких admin/admin, buh/buh, ruk/ruk в проде
+
     first_dept = min(dept_ids.values()) if dept_ids else None
     for username, pw, role in DEV_USERS:
         u = db.query(User).filter_by(username=username).one_or_none()
@@ -183,7 +197,8 @@ def main():
               f"сотрудников={db.query(Employee).count()}, "
               f"отсутствий={db.query(Absence).count()}, календарь+={cal}, "
               f"пользователей={db.query(User).count()}")
-        print("Дев-логины:", ", ".join(f"{u}/{p} ({r.value})" for u, p, r in DEV_USERS))
+        if not settings.is_prod:
+            print("Дев-логины:", ", ".join(f"{u}/{p} ({r.value})" for u, p, r in DEV_USERS))
     finally:
         db.close()
 

@@ -1,10 +1,14 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from '../auth'
 
+// Дев-удобства (предзаполнение и подсказка логинов) — только в dev-сборке.
+// В проде (vite build) import.meta.env.PROD === true → пустые поля, без подсказки.
+const DEV = !import.meta.env.PROD
+
 export default function Login() {
   const { login } = useAuth()
-  const [username, setUsername] = useState('admin')
-  const [password, setPassword] = useState('admin')
+  const [username, setUsername] = useState(DEV ? 'admin' : '')
+  const [password, setPassword] = useState(DEV ? 'admin' : '')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -35,7 +39,7 @@ export default function Login() {
         </label>
         {err && <div className="error">{err}</div>}
         <button disabled={busy}>{busy ? 'Вход…' : 'Войти'}</button>
-        <div className="hint muted">Дев-логины: admin/admin · buh/buh · ruk/ruk</div>
+        {DEV && <div className="hint muted">Дев-логины: admin/admin · buh/buh · ruk/ruk</div>}
       </form>
     </div>
   )

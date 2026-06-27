@@ -9,16 +9,30 @@ from .config import settings
 from .routers import (absences, auth, calendar, departments, employees, runs,
                       schedules, uploads)
 
+# В проде прячем интерактивную документацию (Swagger/redoc/openapi-схему).
+_docs = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.is_prod else {}
 app = FastAPI(title="Табель СКУД", version="0.1.0",
               description="Веб-табель: подготовка табелей, анализ времени, "
-                          "отсутствия, переработки (часы и деньги), статистика.")
+                          "отсутствия, переработки (часы и деньги), статистика.",
+              **_docs)
 
-_origins = ["*"] if settings.cors_origins.strip() == "*" else \
-    [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware, allow_origins=_origins, allow_credentials=True,
-    allow_methods=["*"], allow_headers=["*"],
-)
+if settings.is_prod:
+    # Только явные origin'ы ('*' уже запрещён валидатором Settings в проде),
+    # методы/заголовки сужены до фактически используемых SPA.
+    _origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware, allow_origins=_origins, allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+else:
+    # Dev: удобство (любой origin в LAN) — поведение как раньше.
+    _origins = ["*"] if settings.cors_origins.strip() == "*" else \
+        [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware, allow_origins=_origins, allow_credentials=True,
+        allow_methods=["*"], allow_headers=["*"],
+    )
 
 app.include_router(auth.router)
 app.include_router(departments.router)
