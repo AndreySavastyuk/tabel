@@ -21,11 +21,17 @@ import subprocess
 import sys
 import tempfile
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+# UTF-8 вывод только при прямом запуске; под pytest переустановка sys.stdout
+# закрывает буфер захвата и роняет сессию ("I/O operation on closed file").
+if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+LEGACY = os.path.join(ROOT, "legacy")
 sys.path.insert(0, ROOT)
+# legacy/ на путь — для bare-импортов легаси внутри SCUD*.py после переноса.
+sys.path.insert(0, LEGACY)
 
 
 def main():
@@ -40,7 +46,7 @@ def main():
 
         # 2) легаси start() в temp
         spec = importlib.util.spec_from_file_location(
-            "scud_legacy", os.path.join(ROOT, "SCUD(fixed_time)_v0.3.py"))
+            "scud_legacy", os.path.join(LEGACY, "SCUD(fixed_time)_v0.3.py"))
         scud = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(scud)
         scud.start(tmp, True)
@@ -60,7 +66,7 @@ def main():
         # 4) сравнение (engine = A: его листы должны все присутствовать и совпасть
         #    в B=легаси; лишние листы легаси — аддитивны и игнорируются)
         r = subprocess.run(
-            [sys.executable, os.path.join(ROOT, "_cmp.py"), engine_xlsx, legacy_xlsx],
+            [sys.executable, os.path.join(LEGACY, "_cmp.py"), engine_xlsx, legacy_xlsx],
             capture_output=True, text=True, encoding="utf-8",
             env={**os.environ, "PYTHONIOENCODING": "utf-8"})
         print(r.stdout.strip())

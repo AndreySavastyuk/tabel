@@ -12,7 +12,8 @@ import sys
 import openpyxl
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PATH = os.path.join(HERE, "ЛЭЗ", "Справочник_сотрудников.xlsx")
+ROOT = os.path.dirname(HERE)             # репозиторий (legacy/ лежит в корне)
+PATH = os.path.join(ROOT, "ЛЭЗ", "Справочник_сотрудников.xlsx")
 
 # Список «отдел -> [частичные ФИО]» — это персональные данные заказчика,
 # поэтому он вынесен в отдельный файл `_departments_local.py`, который НЕ
@@ -153,7 +154,7 @@ def main():
     try:
         wb.save(PATH)
     except PermissionError:
-        out_path = os.path.join(HERE, "ЛЭЗ", "Справочник_сотрудников (с отделами).xlsx")
+        out_path = os.path.join(ROOT, "ЛЭЗ", "Справочник_сотрудников (с отделами).xlsx")
         wb.save(out_path)
 
     assigned_rows = set(assignment)
@@ -180,7 +181,7 @@ def main():
         rep.append(f"    {r}")
 
     text = "\n".join(rep)
-    with open(os.path.join(HERE, "отчет_отделы.txt"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(ROOT, "отчет_отделы.txt"), "w", encoding="utf-8") as fh:
         fh.write(text)
     print(f"Назначено: {len(assignment)}/{len(fios)}. "
           f"Не найдено: {len(not_found)}, неоднозначно: {len(ambiguous)}, "

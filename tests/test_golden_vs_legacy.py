@@ -18,11 +18,18 @@ import sys
 
 # Печать в utf-8, НЕ трогая кодировку open() по умолчанию (StorK.csv читается
 # по локали = cp1251; форсировать PYTHONUTF8 нельзя — сломает чтение StorK).
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+# Только при прямом запуске: под pytest переустановка sys.stdout закрывает
+# буфер захвата и роняет сессию ("I/O operation on closed file").
+if __name__ == "__main__":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+LEGACY = os.path.join(ROOT, "legacy")
 sys.path.insert(0, ROOT)
+# legacy/ на путь — чтобы bare-импорты легаси (import model/refdata/compute/
+# FileEditor/DateWorker внутри SCUD*.py) резолвились после переноса в legacy/.
+sys.path.insert(0, LEGACY)
 
 from engine import bases as engine_bases
 from engine import calendar as engine_cal
@@ -35,7 +42,7 @@ WP = ROOT
 
 def load_legacy():
     spec = importlib.util.spec_from_file_location(
-        "scud_legacy", os.path.join(ROOT, "SCUD(fixed_time)_v0.3.py")
+        "scud_legacy", os.path.join(LEGACY, "SCUD(fixed_time)_v0.3.py")
     )
     scud = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(scud)
