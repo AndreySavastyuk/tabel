@@ -1,0 +1,30 @@
+# Табель СКУД — Python-зависимости (прямые), пиннутые под воспроизводимость.
+# Версии = то, что реально установлено и проверено (pytest зелёный).
+# Обновлять осознанно; для полного lock рассмотреть pip-tools/uv позже.
+
+# Обработка данных и Excel
+pandas==3.0.3
+openpyxl==3.1.5
+xlsxwriter==3.2.9
+
+# Веб-бэкенд (FastAPI)
+fastapi==0.138.1
+uvicorn[standard]==0.49.0
+python-multipart==0.0.32
+pydantic==2.13.4
+pydantic-settings==2.14.2
+
+# База данных / миграции
+SQLAlchemy==2.0.51
+alembic==1.18.5
+
+# Безопасность / аутентификация
+bcrypt==5.0.0
+PyJWT==2.13.0
+
+# Тесты / HTTP-клиент для TestClient
+pytest==9.1.1
+httpx==0.28.1
+
+# Линтинг (dev): ruff check api engine scripts tests alembic
+ruff==0.15.20

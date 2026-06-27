@@ -3,6 +3,8 @@
 *.xlsx
 *.csv
 *.txt
+# Манифест зависимостей — КОММИТИТСЯ (исключение из *.txt выше):
+!requirements.txt
 ЛЭЗ/
 _backup/
 _ref_v02/
