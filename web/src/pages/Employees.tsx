@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type Department, type Employee, type Schedule } from '../api'
 import { useAuth } from '../auth'
@@ -53,8 +53,13 @@ export default function Employees() {
       setLoading(false)
     }
   }
+  // Загрузка один раз при монтировании; дальше вручную («Показать»/«Применить»).
+  // Через ref на актуальный load — чтобы эффект не зависел от load и не
+  // перезапрашивал список при наборе текста в поиске.
+  const loadRef = useRef(load)
+  loadRef.current = load
   useEffect(() => {
-    load()
+    loadRef.current()
   }, [])
 
   const search = (e: FormEvent) => {
@@ -64,7 +69,8 @@ export default function Employees() {
   const toggle = (id: number) =>
     setSel((s) => {
       const n = new Set(s)
-      n.has(id) ? n.delete(id) : n.add(id)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
       return n
     })
   const allChecked = rows.length > 0 && rows.every((r) => sel.has(r.id))

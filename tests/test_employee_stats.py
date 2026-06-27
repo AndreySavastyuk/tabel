@@ -138,6 +138,33 @@ def test_monthly_summary(ctx):
     assert days[0]["work_date"] == "01.04.2026"        # отсортировано по дате
 
 
+def test_run_day_records_dept_scope(ctx):
+    """Скоуп руководителя на /runs/{id}/day-records: он видит только свой отдел.
+    Синтетический (без реальных выгрузок) — гоняется и на чистом клоне/CI, в
+    отличие от интеграционного test_api_phase2::test_run_pipeline_and_export."""
+    client, TS, ids = ctx
+    db = TS()
+    run = PipelineRun(status="done", created_at=datetime(2026, 5, 1))
+    db.add(run)
+    db.flush()
+    rid = run.id
+    db.add_all([
+        _day(rid, ids["E"], "01.04.2026", worked=8.0),   # E — в отделе ruk'а (Цех)
+        _day(rid, ids["E"], "02.04.2026", worked=8.0),
+        _day(rid, ids["F"], "01.04.2026", worked=8.0),   # F — в чужом отделе (Офис)
+    ])
+    db.commit()
+    db.close()
+
+    admin = tok(client, "admin", "admin")
+    ruk = tok(client, "ruk", "ruk")
+    all_dr = client.get(f"/runs/{rid}/day-records?limit=20000", headers=admin).json()
+    ruk_dr = client.get(f"/runs/{rid}/day-records?limit=20000", headers=ruk).json()
+    assert len(all_dr) == 3                       # админ видит все записи прогона
+    assert {r["employee_name"] for r in ruk_dr} == {"E"}   # руководитель — только свой отдел
+    assert len(all_dr) > len(ruk_dr) > 0          # инвариант скоупа
+
+
 def test_dedup_latest_run(ctx):
     client, TS, ids = ctx
     eid = ids["E"]

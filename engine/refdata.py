@@ -15,7 +15,6 @@ import json
 import os
 from dataclasses import dataclass, field
 from datetime import date, datetime
-from typing import Optional
 
 import openpyxl
 import pandas as pd

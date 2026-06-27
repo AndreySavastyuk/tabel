@@ -4,7 +4,7 @@
 Все функции — без побочных эффектов и без глобалей, чтобы их можно было
 покрыть юнит-тестами. Время передаётся строками 'HH:MM'.
 """
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from . import model
 

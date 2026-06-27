@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   ABSENCE_STATUS_LABEL, ABSENCE_TYPES, api, type Absence, type AbsenceType, type Employee,
 } from '../api'
@@ -22,17 +22,17 @@ export default function Absences() {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setRows(await api.get<Absence[]>('/absences'))
       if (canCreate) setEmps(await api.get<Employee[]>('/employees?limit=5000'))
     } catch (e) {
       setErr((e as Error).message)
     }
-  }
+  }, [canCreate])
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
 
   const empByName = useMemo(() => {
     const m = new Map<string, number>()
