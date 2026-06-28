@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, devLabel, downloadExport, type DayRecord, type Period, type Run } from '../api'
+import { useAuth } from '../auth'
 
 type Tab = 'depts' | 'dev' | 'acc' | 'norms' | 'late'
 const dkey = (d: string) => {
@@ -18,6 +19,22 @@ export default function RunView() {
   const [periods, setPeriods] = useState<Period[] | null>(null)
   const [tab, setTab] = useState<Tab>('depts')
   const [err, setErr] = useState('')
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin_hr'
+  const [busy, setBusy] = useState(false)
+
+  const setFinal = async (makeFinal: boolean) => {
+    setBusy(true)
+    setErr('')
+    try {
+      setRun(await api.post<Run>(`/runs/${runId}/${makeFinal ? 'finalize' : 'unfinalize'}`, {}))
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+  const exportXlsx = () => downloadExport(runId).catch((e) => setErr((e as Error).message))
 
   const loadRun = useCallback(async () => {
     try {
@@ -86,11 +103,19 @@ export default function RunView() {
     <div>
       <div className="pagehead">
         <h2>
-          Прогон №{run.id} <span className="muted">· {run.status === 'done' ? 'готов' : run.status}</span>
+          Прогон №{run.id}
+          {run.period_label && <span className="muted"> · {run.period_label}</span>}
+          <span className="muted"> · {run.status === 'done' ? 'готов' : run.status}</span>
+          {run.is_final && <span className="badge st-done" style={{ marginLeft: 8 }}>★ финальный</span>}
         </h2>
         <div className="searchbar">
           <button className="ghost" onClick={() => nav('/runs')}>← К прогонам</button>
-          {run.status === 'done' && <button onClick={() => downloadExport(run.id)}>Скачать xlsx</button>}
+          {run.status === 'done' && <button onClick={exportXlsx}>Скачать xlsx</button>}
+          {isAdmin && run.status === 'done' && (
+            run.is_final
+              ? <button className="ghost" disabled={busy} onClick={() => setFinal(false)}>Снять финальность</button>
+              : <button disabled={busy} onClick={() => setFinal(true)}>Утвердить (финальный)</button>
+          )}
         </div>
       </div>
       {err && <div className="error">{err}</div>}

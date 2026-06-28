@@ -10,7 +10,9 @@ from .config import settings
 
 def hash_password(plain: str) -> str:
     # bcrypt ограничен 72 байтами — обрезаем (стандартная практика).
-    return bcrypt.hashpw(plain.encode("utf-8")[:72], bcrypt.gensalt()).decode("utf-8")
+    rounds = max(12, int(settings.bcrypt_rounds))
+    return bcrypt.hashpw(plain.encode("utf-8")[:72],
+                         bcrypt.gensalt(rounds=rounds)).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -38,4 +40,7 @@ def create_refresh_token(sub: str, role: str) -> str:
 
 
 def decode_token(token: str) -> dict:
-    return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    # Требуем обязательные claim'ы: токен без exp никогда не истечёт; sub —
+    # личность. Все наши токены их несут, так что это не ломает существующие.
+    return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm],
+                      options={"require": ["exp", "iat", "sub"]})

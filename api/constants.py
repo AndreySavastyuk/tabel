@@ -23,6 +23,20 @@ class AbsenceStatus(str, Enum):
     rejected = "rejected"
 
 
+class PeriodCloseStatus(str, Enum):
+    open = "open"            # месяц открыт (правки разрешены)
+    closing = "closing"      # в процессе закрытия
+    closed = "closed"        # месяц закрыт/утверждён
+
+
+class DeviationStatus(str, Enum):
+    new = "new"                  # новое (только обнаружено)
+    in_progress = "in_progress"  # в работе
+    accepted = "accepted"        # принято (так и должно быть)
+    fixed = "fixed"              # исправлено (данные поправлены)
+    ignored = "ignored"          # проигнорировано
+
+
 class AliasSource(str, Enum):
     stork = "stork"
     sigur = "sigur"
@@ -36,6 +50,14 @@ class UploadSource(str, Enum):
     sigur = "sigur"          # SIGUR.xlsx
     hikvision = "hikvision"  # report.xls
     lez = "lez"              # ЛЭЗ/lez.xlsx (проходная)
+
+
+class ReferenceKind(str, Enum):
+    """Тип загружаемого справочника (Excel) для импорта в БД."""
+    employees = "employees"   # Справочник_сотрудников.xlsx (ФИО/отдел/кабинет/график/фикс/ЛЭЗ)
+    norms = "norms"           # Графики_нормы.xlsx (смена/обед/норма по графику×месяц)
+    absences = "absences"     # Отсутствия.xlsx
+    trips = "trips"           # Командировки.xlsx
 
 
 class HolidayKind(str, Enum):

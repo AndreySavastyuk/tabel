@@ -6,8 +6,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import (absences, auth, calendar, departments, employees, runs,
-                      schedules, uploads)
+from .routers import (absences, aliases, assign, auth, calendar, departments,
+                      deviations, employees, periods, reference, runs, schedules,
+                      settings as settings_router, uploads, users)
 
 # В проде прячем интерактивную документацию (Swagger/redoc/openapi-схему).
 _docs = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.is_prod else {}
@@ -38,8 +39,15 @@ app.include_router(auth.router)
 app.include_router(departments.router)
 app.include_router(schedules.router)
 app.include_router(employees.router)
+app.include_router(users.router)
 app.include_router(uploads.router)
+app.include_router(reference.router)
+app.include_router(aliases.router)
+app.include_router(assign.router)
+app.include_router(settings_router.router)
 app.include_router(runs.router)
+app.include_router(deviations.router)
+app.include_router(periods.router)
 app.include_router(absences.router)
 app.include_router(calendar.router)
 

@@ -15,8 +15,10 @@ from engine import bases, compute, model as emodel, shifts
 from engine.calendar import make_calendar_weekend_fn
 from engine.timeutil import date_former
 
-from ..models import (AccessEvent, DayRecordRow, Employee, EmployeeAlias,
-                      PeriodSummary, PipelineRun, Upload)
+from ..constants import DeviationStatus
+from ..models import (AccessEvent, DayRecordRow, DeviationItem, Employee,
+                      EmployeeAlias, PeriodSummary, PipelineRun, Upload)
+from .deviation_codes import detail_of, dev_code
 from .refdata_from_db import (build_fixed_times, build_refdata,
                               load_calendar, load_thresholds)
 
@@ -38,9 +40,27 @@ def _assemble_workdir(uploads) -> str:
     return wp
 
 
-def compute_analytics(db: Session, wp: str, names=None):
+def _truncate_to_period(records, d0, d1):
+    """Оставляет в records только дни в пределах [d0, d1] (включительно)."""
+    for name in list(records):
+        kept = []
+        for dr in records[name]:
+            d = compute.parse_ddmmyyyy(dr.date)
+            if d is not None and d0 <= d <= d1:
+                kept.append(dr)
+        records[name] = kept
+
+
+def compute_analytics(db: Session, wp: str, names=None, period_from=None, period_to=None):
     """Парсинг + расчёт (без записи в БД). Возвращает
-    (records, periods, base, lezbase, points, weekend_fn)."""
+    (records, periods, base, lezbase, points, weekend_fn, thresholds).
+
+    thresholds — фактически применённый словарь порогов прогона; сохраняется в
+    PipelineRun.thresholds для воспроизводимости (объяснение дня, отклонения).
+
+    Если задан период [period_from, period_to], записи обрезаются по нему, а
+    норма периода считается пропорционально доле рабочих дней (неполный месяц).
+    Без периода (legacy) — поведение прежнее, byte-for-byte."""
     ref = build_refdata(db)
     fixed = build_fixed_times(db)
     thresholds = {**emodel.THRESHOLDS, **load_thresholds(db)}
@@ -54,12 +74,19 @@ def compute_analytics(db: Session, wp: str, names=None):
     records = shifts.build_day_records(
         rebuild, base, lezbase, ref=ref, fixed_employees=fixed, apply_fixed=True,
         thresholds=thresholds, weekend_fn=weekend_fn)
-    span = compute.date_span_of(records)
+    if period_from and period_to:
+        _truncate_to_period(records, period_from, period_to)
+        span = (period_from, period_to)
+        norm_factors = compute.period_norm_factors(period_from, period_to, weekend_fn)
+    else:
+        span = compute.date_span_of(records)
+        norm_factors = None
     compute.inject_absence_records(records, ref, span, weekend_fn=weekend_fn)
     work_days = compute.count_working_days(span, weekend_fn=weekend_fn)
     periods = compute.build_employee_periods(
-        records, ref=ref, working_days=work_days, thresholds=thresholds)
-    return records, periods, base, lezbase, points, weekend_fn
+        records, ref=ref, working_days=work_days, thresholds=thresholds,
+        norm_factors=norm_factors)
+    return records, periods, base, lezbase, points, weekend_fn, thresholds
 
 
 def _resolve_employees(db: Session, names) -> dict:
@@ -133,6 +160,73 @@ def _persist(db: Session, run_id: int, records, periods, base, lezbase, points, 
     if events:
         db.execute(insert(AccessEvent), events)
 
+    _sync_deviations(db, run_id, records, emap)
+
+
+def _sync_deviations(db: Session, run_id: int, records, emap):
+    """Синхронизирует deviation_items против отклонений этого прогона.
+
+    Ключ employee_id|work_date|dev_code run-независим: повторный прогон того же
+    дня НЕ плодит дубль и НЕ сбрасывает статус/ответственного/комментарии —
+    обновляет лишь run_id/last_seen/detail/is_present. Отклонение, исчезнувшее
+    из прогона (данные поправили), помечается is_present=False (не удаляется —
+    аудит)."""
+    eids = {e for e in emap.values() if e is not None}
+    dept_by_eid = {}
+    if eids:
+        for e in db.scalars(select(Employee).where(Employee.id.in_(eids))):
+            dept_by_eid[e.id] = e.department_id
+
+    present = {}   # dedup_key -> поля
+    for nm, recs in records.items():
+        eid = emap.get(nm)
+        if eid is None:
+            continue
+        for dr in recs:
+            for item in (dr.deviations or []):
+                code = dev_code(item)
+                key = f"{eid}|{dr.date}|{code}"
+                det = detail_of(item)
+                cur = present.get(key)
+                if cur is None:
+                    present[key] = dict(employee_id=eid, work_date=dr.date, dev_code=code,
+                                        detail=det, dept_name=dr.dept,
+                                        department_id=dept_by_eid.get(eid))
+                elif det and not cur["detail"]:
+                    cur["detail"] = det
+
+    now = datetime.now(timezone.utc)
+    existing = {}
+    if present:
+        for di in db.scalars(select(DeviationItem).where(
+                DeviationItem.dedup_key.in_(list(present.keys())))):
+            existing[di.dedup_key] = di
+    for key, f in present.items():
+        di = existing.get(key)
+        if di is None:
+            db.add(DeviationItem(
+                dedup_key=key, run_id=run_id, employee_id=f["employee_id"],
+                department_id=f["department_id"], work_date=f["work_date"],
+                dev_code=f["dev_code"], detail=f["detail"], dept_name=f["dept_name"],
+                status=DeviationStatus.new.value, is_present=True,
+                first_seen_at=now, last_seen_at=now))
+        else:
+            di.run_id = run_id
+            di.detail = f["detail"]
+            di.dept_name = f["dept_name"]
+            di.department_id = f["department_id"]
+            di.is_present = True
+            di.last_seen_at = now
+            # status / assignee_id / resolution_note / comments — НЕ трогаем
+
+    # исчезнувшие: ранее наблюдались этим прогоном, теперь отсутствуют
+    gone = select(DeviationItem).where(
+        DeviationItem.run_id == run_id, DeviationItem.is_present.is_(True))
+    if present:
+        gone = gone.where(DeviationItem.dedup_key.notin_(list(present.keys())))
+    for di in db.scalars(gone):
+        di.is_present = False
+
 
 def process_run(run_id: int, SessionFactory, names=None):
     """Полный прогон: parse → compute → persist. Не бросает наружу (для
@@ -141,15 +235,21 @@ def process_run(run_id: int, SessionFactory, names=None):
     wp = None
     try:
         run = db.get(PipelineRun, run_id)
+        if run.is_final:
+            # финальный (утверждённый) прогон заморожен — пересчёт запрещён.
+            return
         run.status = "running"
+        period_from, period_to = run.period_from, run.period_to
         db.commit()
         uploads = db.scalars(select(Upload).where(Upload.id.in_(run.upload_ids or []))).all()
         wp = _assemble_workdir(uploads)
-        records, periods, base, lezbase, points, _ = compute_analytics(db, wp, names=names)
+        records, periods, base, lezbase, points, _wf, thresholds = compute_analytics(
+            db, wp, names=names, period_from=period_from, period_to=period_to)
         emap = _resolve_employees(db, set(base) | set(lezbase))
         _persist(db, run_id, records, periods, base, lezbase, points, emap)
         run = db.get(PipelineRun, run_id)
         run.status = "done"
+        run.thresholds = thresholds
         run.n_day_records = sum(len(v) for v in records.values())
         run.n_employees = len(periods)
         run.finished_at = datetime.now(timezone.utc)

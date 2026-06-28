@@ -4,7 +4,8 @@
 Все функции — без побочных эффектов и без глобалей, чтобы их можно было
 покрыть юнит-тестами. Время передаётся строками 'HH:MM'.
 """
-from datetime import datetime, timedelta
+import calendar
+from datetime import date, datetime, timedelta
 
 from . import model
 
@@ -184,6 +185,32 @@ def count_working_days(day_span, weekend_fn=None):
     return n
 
 
+def period_norm_factors(d0, d1, weekend_fn=None):
+    """{'YYYY-MM': доля рабочих дней периода [d0, d1] в этом месяце}.
+
+    factor = рабочих_дней(период ∩ месяц) / рабочих_дней(весь месяц). Месяц,
+    покрытый периодом ЦЕЛИКОМ, даёт factor == 1.0 — норма не масштабируется
+    (инвариант: полный месяц ⇒ результат идентичен прежнему). Для неполного
+    месяца норма умножается на долю рабочих дней (решение: пропорция по дням)."""
+    factors = {}
+    if not d0 or not d1:
+        return factors
+    y, mo = d0.year, d0.month
+    while (y, mo) <= (d1.year, d1.month):
+        ndays = calendar.monthrange(y, mo)[1]
+        full = inside = 0
+        for dd in range(1, ndays + 1):
+            cur = date(y, mo, dd)
+            if weekend_fn and weekend_fn(cur.strftime("%d.%m.%Y")):
+                continue
+            full += 1
+            if d0 <= cur <= d1:
+                inside += 1
+        factors[month_key_of(date(y, mo, 1))] = (inside / full) if full else 1.0
+        y, mo = (y + 1, 1) if mo == 12 else (y, mo + 1)
+    return factors
+
+
 def period_months_of(day_records):
     """Множество месяцев 'YYYY-MM', встречающихся в записях."""
     months = set()
@@ -207,7 +234,7 @@ def bucket_of(percent):
 
 
 def build_employee_periods(day_records, ref=None, months=None, thresholds=None,
-                           working_days=None):
+                           working_days=None, norm_factors=None):
     """Свёртка по сотруднику за период -> {ФИО: EmployeePeriod}.
 
     Решение заказчика: отсутствия (отпуск/больничный/командировка)
@@ -256,7 +283,11 @@ def build_employee_periods(day_records, ref=None, months=None, thresholds=None,
         pn = 0.0
         if ep.schedule and ref:
             for m in months:
-                pn += ref.norms.get((ep.schedule, m), 0.0)
+                v = ref.norms.get((ep.schedule, m), 0.0)
+                if norm_factors is not None:
+                    # неполный месяц: норма пропорциональна доле рабочих дней.
+                    v *= norm_factors.get(m, 1.0)
+                pn += v
         ep.period_norm = round(pn, 2)
 
         # Зачёт отсутствий. Предпочтительно — через дневную норму, выведенную

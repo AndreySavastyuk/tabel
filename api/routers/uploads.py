@@ -18,7 +18,7 @@ from ..schemas import UploadOut
 
 router = APIRouter(prefix="/uploads", tags=["uploads"])
 
-UPLOAD_DIR = os.path.join(settings.workdir, "_uploads")
+UPLOAD_DIR = settings.uploads_path   # <workdir>/_uploads (dev) или TABEL_UPLOAD_DIR
 
 
 @router.post("", response_model=UploadOut, status_code=status.HTTP_201_CREATED)

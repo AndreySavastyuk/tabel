@@ -80,3 +80,26 @@ def same_person(a_toks, b_toks):
     if len(a_toks) >= 3 and len(b_toks) >= 3 and not sim(a_toks[2], b_toks[2]):
         return False
     return True
+
+
+def match_score(a, b):
+    """Грубая оценка «это один человек» для двух ФИО, 0..1.
+
+    0 — разные фамилии (даже с допуском). 1.0 — фамилия точная и все
+    сопоставимые имя/отчество похожи; меньше — частичное совпадение
+    (например «Иванов И.» против «Иванов Иван Иванович»). Используется
+    экраном разбора алиасов для подсказки кандидатов."""
+    ta, tb = tokens(a), tokens(b)
+    if not ta or not tb:
+        return 0.0
+    if ta[0] == tb[0]:
+        s = 1.0
+    elif sim(ta[0], tb[0]):
+        s = 0.8          # фамилия с опечаткой/ё-е
+    else:
+        return 0.0       # разные фамилии — не кандидат
+    pairs = list(zip(ta[1:], tb[1:]))
+    if pairs:
+        good = sum(1 for x, y in pairs if sim(x, y))
+        s *= 0.5 + 0.5 * good / len(pairs)
+    return round(s, 3)

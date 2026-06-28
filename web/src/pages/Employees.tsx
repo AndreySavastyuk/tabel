@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, type Department, type Employee, type Schedule } from '../api'
 import { useAuth } from '../auth'
 
@@ -14,6 +14,7 @@ export default function Employees() {
   const [q, setQ] = useState('')
   const [deptFilter, setDeptFilter] = useState('')
   const [noSchedule, setNoSchedule] = useState(false)
+  const [noDept, setNoDept] = useState(false)
   const [sel, setSel] = useState<Set<number>>(new Set())
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
@@ -38,6 +39,7 @@ export default function Employees() {
       if (q) params.set('q', q)
       if (deptFilter) params.set('department_id', deptFilter)
       if (noSchedule) params.set('no_schedule', 'true')
+      if (noDept) params.set('no_department', 'true')
       const [emps, ds, ss] = await Promise.all([
         api.get<Employee[]>(`/employees?${params}`),
         api.get<Department[]>('/departments'),
@@ -109,11 +111,19 @@ export default function Employees() {
           </select>
           <label className="chk"><input type="checkbox" checked={noSchedule}
             onChange={(e) => setNoSchedule(e.target.checked)} /> без графика</label>
+          <label className="chk"><input type="checkbox" checked={noDept}
+            onChange={(e) => setNoDept(e.target.checked)} /> без отдела</label>
           <button>Показать</button>
         </form>
       </div>
       {err && <div className="error">{err}</div>}
       {msg && <div className="ok-box">{msg}</div>}
+      {noDept && isAdmin && (
+        <div className="muted" style={{ marginBottom: 8 }}>
+          Очередь «без отдела». Назначьте отдел: отметьте строки и панель выше, либо{' '}
+          <Link to="/assign">массово из файла</Link>.
+        </div>
+      )}
 
       {isAdmin && sel.size > 0 && (
         <div className="card panel assignbar">

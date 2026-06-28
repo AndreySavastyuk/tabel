@@ -4,7 +4,7 @@
 Карточка: помесячная сводка + дни месяца."""
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,9 +14,10 @@ from ..constants import Role
 from ..db import get_db
 from ..deps import get_current_user, require_role, scoped_department_id
 from ..models import Employee
-from ..schemas import (DayRecordOut, EmployeeBulkAssign, EmployeeCreate,
-                       EmployeeOut, EmployeeUpdate, MonthSummary, employee_out)
-from ..services import employee_stats
+from ..schemas import (DayExplainOut, DayRecordOut, EmployeeBulkAssign,
+                       EmployeeCreate, EmployeeOut, EmployeeUpdate, MonthSummary,
+                       employee_out)
+from ..services import employee_stats, explain
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -30,6 +31,7 @@ def _require_access(user, emp: Employee):
 @router.get("", response_model=list[EmployeeOut])
 def list_employees(q: Optional[str] = None, active_only: bool = False,
                    department_id: Optional[int] = None, no_schedule: bool = False,
+                   no_department: bool = False,
                    limit: int = Query(2000, le=5000), offset: int = 0,
                    db: Session = Depends(get_db), user=Depends(get_current_user)):
     dep = scoped_department_id(user)
@@ -44,6 +46,8 @@ def list_employees(q: Optional[str] = None, active_only: bool = False,
         stmt = stmt.where(Employee.is_active.is_(True))
     if no_schedule:
         stmt = stmt.where(Employee.schedule_id.is_(None))
+    if no_department:                       # «неразобранные» — без отдела
+        stmt = stmt.where(Employee.department_id.is_(None))
     if q:
         stmt = stmt.where(Employee.full_name.ilike(f"%{q}%"))
     stmt = stmt.order_by(Employee.full_name).limit(limit).offset(offset)
@@ -128,3 +132,20 @@ def employee_days(emp_id: int, month: str = Query(..., pattern=r"^\d{4}-\d{2}$")
         o.employee_name = e.full_name
         out.append(o)
     return out
+
+
+@router.get("/{emp_id}/days/{work_date}/explain", response_model=DayExplainOut)
+def explain_day(emp_id: int,
+                work_date: str = Path(..., pattern=r"^\d{2}\.\d{2}\.\d{4}$"),
+                run_id: Optional[int] = None,
+                db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """Полное объяснение расчёта дня (DD.MM.YYYY). По умолчанию — из последнего
+    прогона; ?run_id фиксирует конкретный прогон."""
+    e = db.get(Employee, emp_id)
+    if e is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")
+    _require_access(user, e)
+    data = explain.build_day_explanation(db, emp_id, work_date, run_id=run_id)
+    if data is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "День не найден")
+    return data

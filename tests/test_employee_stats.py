@@ -98,6 +98,33 @@ def test_bulk_assign_and_gating(ctx):
                         headers=tok(client, "ruk", "ruk")).status_code == 403
 
 
+def test_no_department_filter(ctx):
+    """Фильтр «без отдела» — очередь неразобранных сотрудников."""
+    client, TS, _ = ctx
+    db = TS()
+    db.add(Employee(full_name="Безотделов Б", normalized_name="Безотделов Б"))  # без отдела
+    db.commit()
+    db.close()
+    admin = tok(client, "admin", "admin")
+    assert len(client.get("/employees", headers=admin).json()) == 3      # E, F, Безотделов
+    nd = client.get("/employees?no_department=true", headers=admin).json()
+    assert len(nd) == 1 and nd[0]["full_name"] == "Безотделов Б"
+
+
+def test_admin_patch_employee_assignment(ctx):
+    """Единичное назначение отдела/графика/кабинета (на это опирается карточка)."""
+    client, _, ids = ctx
+    admin = tok(client, "admin", "admin")
+    r = client.patch(f"/employees/{ids['F']}",
+                     json={"department_id": ids["dept"], "schedule_id": ids["sched"], "cabinet": "К-5"},
+                     headers=admin)
+    assert r.status_code == 200, r.text
+    e = client.get(f"/employees/{ids['F']}", headers=admin).json()
+    assert e["department_id"] == ids["dept"]
+    assert e["schedule_id"] == ids["sched"]
+    assert e["cabinet"] == "К-5"
+
+
 def test_monthly_summary(ctx):
     client, TS, ids = ctx
     eid = ids["E"]

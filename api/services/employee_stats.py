@@ -15,19 +15,43 @@ def _month_of(work_date: str) -> str:
 
 
 def _dedup_latest(db: Session, employee_id: int, month: str | None = None):
-    """DayRecordRow по сотруднику, по одному на дату (из последнего прогона)."""
+    """DayRecordRow по сотруднику, по одному на дату. Приоритет: финальный
+    (утверждённый) прогон периода; иначе самый поздний. Тай-брейк детерминирован:
+    при равном created_at побеждает больший run_id."""
     rows = db.execute(
-        select(DayRecordRow, PipelineRun.created_at)
+        select(DayRecordRow, PipelineRun.created_at, PipelineRun.is_final)
         .join(PipelineRun, PipelineRun.id == DayRecordRow.run_id)
         .where(DayRecordRow.employee_id == employee_id)).all()
     by_date: dict = {}
-    for r, created in rows:
+    for r, created, is_final in rows:
         if month and _month_of(r.work_date) != month:
             continue
+        key = (1 if is_final else 0, created, r.run_id)
         cur = by_date.get(r.work_date)
-        if cur is None or created > cur[1]:
-            by_date[r.work_date] = (r, created)
+        if cur is None or key > cur[1]:
+            by_date[r.work_date] = (r, key)
     return [r for r, _ in by_date.values()]
+
+
+def latest_run_for_day(db: Session, employee_id: int, work_date: str,
+                       run_id: int | None = None):
+    """(DayRecordRow, PipelineRun) выбранного дня. По умолчанию — самый поздний
+    прогон с детерминированным тай-брейком (created_at, run_id). ``run_id``
+    фиксирует конкретный прогон. Возвращает (None, None), если дня нет.
+
+    Семантика стабильна для будущей эволюции (приоритет финального прогона):
+    потребители (карточка, объяснение дня) зовут один helper."""
+    stmt = (select(DayRecordRow, PipelineRun)
+            .join(PipelineRun, PipelineRun.id == DayRecordRow.run_id)
+            .where(DayRecordRow.employee_id == employee_id,
+                   DayRecordRow.work_date == work_date))
+    if run_id is not None:
+        stmt = stmt.where(DayRecordRow.run_id == run_id)
+    rows = db.execute(stmt).all()
+    if not rows:
+        return None, None
+    dr, run = max(rows, key=lambda rr: (1 if rr[1].is_final else 0, rr[1].created_at, rr[1].id))
+    return dr, run
 
 
 def monthly_summaries(db: Session, employee_id: int) -> list[dict]:

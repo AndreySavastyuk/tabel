@@ -62,7 +62,8 @@ def test_db_roundtrip_identical_to_direct():
 
         # --- прямой путь (in-memory) ---
         wp = ingestion._assemble_workdir(uploads)
-        records, periods, base, lezbase, points, weekend_fn = ingestion.compute_analytics(db, wp)
+        records, periods, base, lezbase, points, weekend_fn, _thresholds = \
+            ingestion.compute_analytics(db, wp)
         direct = export.write_workbook_from(records, periods, weekend_fn)
 
         # --- через БД ---

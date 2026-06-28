@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     workdir: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     # Разрешённые origin для CORS (через запятую); по умолчанию любой в LAN.
     cors_origins: str = "*"
+    # Стоимость bcrypt (cost factor) для новых хэшей паролей. >=12.
+    bcrypt_rounds: int = 12
+    # Куда сохранять загруженные файлы. По умолчанию <workdir>/_uploads (dev);
+    # в проде задать абсолютный путь вне дерева исходников (TABEL_UPLOAD_DIR).
+    upload_dir: str | None = None
+
+    @property
+    def uploads_path(self) -> str:
+        return self.upload_dir or os.path.join(self.workdir, "_uploads")
 
     @property
     def is_prod(self) -> bool:
@@ -71,6 +80,11 @@ class Settings(BaseSettings):
             problems.append(
                 "TABEL_DATABASE_URL указывает на SQLite — в проде используйте PostgreSQL "
                 "(postgresql+psycopg://user:pass@host/db)."
+            )
+        if not self.upload_dir or not os.path.isabs(self.upload_dir):
+            problems.append(
+                "TABEL_UPLOAD_DIR не задан или не абсолютный — в проде укажите абсолютный "
+                "путь для загрузок вне дерева исходников (например /var/lib/tabel/uploads)."
             )
         if problems:
             raise ValueError(
