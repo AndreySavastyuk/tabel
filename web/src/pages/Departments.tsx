@@ -1,15 +1,42 @@
-import { useEffect, useState } from 'react'
-import { api, type Department } from '../api'
+import { Fragment, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { api, type Department, type Employee, type Schedule } from '../api'
+import { useAuth } from '../auth'
+
+type Group = { id: number | null; name: string; emps: Employee[] }
+const keyOf = (id: number | null) => (id == null ? 'none' : String(id))
 
 export default function Departments() {
-  const [rows, setRows] = useState<Department[]>([])
+  const { user } = useAuth()
+  const nav = useNavigate()
+
+  const [depts, setDepts] = useState<Department[]>([])
+  const [emps, setEmps] = useState<Employee[]>([])
+  const [scheds, setScheds] = useState<Schedule[]>([])
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
+
+  // фильтры / быстрый поиск
+  const [deptQuery, setDeptQuery] = useState('')
+  const [empQuery, setEmpQuery] = useState('')
+  const [activeOnly, setActiveOnly] = useState(false)
+  const [nonEmptyOnly, setNonEmptyOnly] = useState(false)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  // Руководитель отдела видит только свой отдел (бэкенд так же скоупит /employees).
+  const scopeDept = user?.role === 'dept_head' ? user.department_id ?? -1 : null
 
   useEffect(() => {
     ;(async () => {
       try {
-        setRows(await api.get<Department[]>('/departments'))
+        const [ds, es, ss] = await Promise.all([
+          api.get<Department[]>('/departments'),
+          api.get<Employee[]>('/employees?limit=5000'),
+          api.get<Schedule[]>('/schedules'),
+        ])
+        setDepts(ds)
+        setEmps(es)
+        setScheds(ss)
       } catch (e) {
         setErr((e as Error).message)
       } finally {
@@ -18,33 +45,208 @@ export default function Departments() {
     })()
   }, [])
 
+  const schedCode = useMemo(
+    () => Object.fromEntries(scheds.map((s) => [s.id, s.code])),
+    [scheds],
+  )
+
+  // сотрудники, сгруппированные по отделу (null = без отдела)
+  const byDept = useMemo(() => {
+    const m = new Map<number | null, Employee[]>()
+    for (const e of emps) {
+      const k = e.department_id ?? null
+      const arr = m.get(k)
+      if (arr) arr.push(e)
+      else m.set(k, [e])
+    }
+    return m
+  }, [emps])
+
+  // отделы (+ «без отдела») с полными списками сотрудников
+  const groups: Group[] = useMemo(() => {
+    const gs: Group[] = depts
+      .filter((d) => scopeDept == null || d.id === scopeDept)
+      .map((d) => ({ id: d.id, name: d.name, emps: byDept.get(d.id) ?? [] }))
+    if (scopeDept == null) {
+      const orphans = byDept.get(null) ?? []
+      if (orphans.length) gs.push({ id: null, name: 'Без отдела', emps: orphans })
+    }
+    return gs
+  }, [depts, byDept, scopeDept])
+
+  const deptTerm = deptQuery.trim().toLowerCase()
+  const empTerm = empQuery.trim().toLowerCase()
+  const searchMode = empTerm.length > 0
+
+  // видимые группы + отфильтрованные для показа сотрудники
+  const view = useMemo(() => {
+    const keep = (e: Employee) =>
+      (!activeOnly || e.is_active) &&
+      (!empTerm || e.full_name.toLowerCase().includes(empTerm))
+    return groups
+      .map((g) => ({ g, list: g.emps.filter(keep) }))
+      .filter(({ g, list }) => {
+        if (deptTerm && !g.name.toLowerCase().includes(deptTerm)) return false
+        if (searchMode) return list.length > 0 // в режиме поиска — только отделы с совпадениями
+        if (nonEmptyOnly && g.emps.length === 0) return false
+        return true
+      })
+  }, [groups, deptTerm, empTerm, activeOnly, nonEmptyOnly, searchMode])
+
+  const totalShownEmp = useMemo(() => view.reduce((s, { g }) => s + g.emps.length, 0), [view])
+  const totalMatched = useMemo(() => view.reduce((s, { list }) => s + list.length, 0), [view])
+
+  const toggle = (id: number | null) =>
+    setExpanded((s) => {
+      const n = new Set(s)
+      const k = keyOf(id)
+      if (n.has(k)) n.delete(k)
+      else n.add(k)
+      return n
+    })
+  const isOpen = (id: number | null) => searchMode || expanded.has(keyOf(id))
+
   return (
     <div>
       <div className="pagehead">
         <h2>
-          Отделы <span className="muted">({rows.length})</span>
+          Отделы <span className="muted">({view.length})</span>
         </h2>
+        <div className="searchbar">
+          <input
+            placeholder="Поиск по отделу"
+            value={deptQuery}
+            onChange={(e) => setDeptQuery(e.target.value)}
+          />
+          <input
+            placeholder="Поиск по сотруднику"
+            value={empQuery}
+            onChange={(e) => setEmpQuery(e.target.value)}
+          />
+          <label className="chk">
+            <input
+              type="checkbox"
+              checked={activeOnly}
+              onChange={(e) => setActiveOnly(e.target.checked)}
+            />{' '}
+            только активные
+          </label>
+          <label className="chk">
+            <input
+              type="checkbox"
+              checked={nonEmptyOnly}
+              onChange={(e) => setNonEmptyOnly(e.target.checked)}
+            />{' '}
+            непустые
+          </label>
+        </div>
       </div>
+
       {err && <div className="error">{err}</div>}
+
       {loading ? (
         <div className="muted">Загрузка…</div>
       ) : (
-        <table className="grid">
-          <thead>
-            <tr>
-              <th style={{ width: 60 }}>ID</th>
-              <th>Название</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((d) => (
-              <tr key={d.id}>
-                <td>{d.id}</td>
-                <td>{d.name}</td>
+        <>
+          <div className="muted" style={{ marginBottom: 8 }}>
+            {searchMode
+              ? `Найдено сотрудников: ${totalMatched} в ${view.length} отд.`
+              : `Сотрудников в показанных отделах: ${totalShownEmp}`}
+          </div>
+          <table className="grid">
+            <thead>
+              <tr>
+                <th style={{ width: 34 }}></th>
+                <th>Отдел</th>
+                <th style={{ width: 120 }}>Сотрудников</th>
+                <th style={{ width: 100 }}>Активных</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {view.map(({ g, list }) => {
+                const open = isOpen(g.id)
+                const hasEmps = g.emps.length > 0
+                const active = g.emps.filter((e) => e.is_active).length
+                return (
+                  <Fragment key={keyOf(g.id)}>
+                    <tr className={open ? 'selrow' : ''}>
+                      <td>
+                        <button
+                          className="link"
+                          style={{ padding: '2px 9px' }}
+                          disabled={!hasEmps}
+                          onClick={() => toggle(g.id)}
+                          aria-label={open ? 'Свернуть' : 'Раскрыть'}
+                        >
+                          {open ? '▾' : '▸'}
+                        </button>
+                      </td>
+                      <td>
+                        {hasEmps ? (
+                          <button className="link" onClick={() => toggle(g.id)}>
+                            {g.name}
+                          </button>
+                        ) : (
+                          <span className="muted">{g.name}</span>
+                        )}
+                      </td>
+                      <td>{g.emps.length}</td>
+                      <td className="muted">{active}</td>
+                    </tr>
+                    {open && (
+                      <tr>
+                        <td></td>
+                        <td colSpan={3} style={{ padding: 0 }}>
+                          {list.length === 0 ? (
+                            <div className="muted" style={{ padding: '8px 12px' }}>
+                              Нет сотрудников по текущему фильтру
+                            </div>
+                          ) : (
+                            <table className="grid inner">
+                              <thead>
+                                <tr>
+                                  <th>ФИО</th>
+                                  <th style={{ width: 120 }}>Кабинет</th>
+                                  <th style={{ width: 150 }}>График</th>
+                                  <th style={{ width: 120 }}>Статус</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {list.map((e) => (
+                                  <tr key={e.id}>
+                                    <td>
+                                      <button className="link" onClick={() => nav(`/employees/${e.id}`)}>
+                                        {e.full_name}
+                                      </button>
+                                    </td>
+                                    <td>{e.cabinet || '—'}</td>
+                                    <td className={!e.schedule_id ? 'muted' : ''}>
+                                      {e.schedule_id ? schedCode[e.schedule_id] ?? '—' : 'нет'}
+                                    </td>
+                                    <td className={e.is_active ? '' : 'muted'}>
+                                      {e.is_active ? 'активен' : 'неактивен'}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                )
+              })}
+              {view.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="muted" style={{ padding: 12 }}>
+                    Ничего не найдено
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   )
