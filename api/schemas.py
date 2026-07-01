@@ -349,6 +349,9 @@ class DeviationItemOut(BaseModel):
     dev_label: Optional[str] = None
     detail: Optional[str] = None
     status: str
+    away_minutes: int = 0
+    deduct_minutes: Optional[int] = None
+    time_decision: str = "pending"
     is_present: bool
     assignee_id: Optional[int] = None
     assignee_name: Optional[str] = None
@@ -378,6 +381,8 @@ class DeviationPatch(BaseModel):
     status: Optional[str] = None
     assignee_id: Optional[int] = None
     note: Optional[str] = None
+    time_decision: Optional[str] = None      # только кадры/бухгалтер
+    deduct_minutes: Optional[int] = None      # сколько минут вычесть (по умолч. — вся сумма)
 
 
 class DeviationBulkIn(BaseModel):
@@ -385,6 +390,7 @@ class DeviationBulkIn(BaseModel):
     status: Optional[str] = None
     assignee_id: Optional[int] = None
     note: Optional[str] = None
+    time_decision: Optional[str] = None      # только кадры/бухгалтер
 
 
 class DeviationCommentIn(BaseModel):
@@ -482,6 +488,9 @@ class DayRecordOut(BaseModel):
     start_fixed: bool = False
     lunch_deducted: float = 0.0
     worked_hours: float
+    # Вычет времени вне территории (решение по отклонению REENTRY_GAP этого дня).
+    deduct_minutes: int = 0
+    effective_hours: Optional[float] = None   # worked_hours за вычетом отлучек (None = нет вычета)
     lateness_min: int
     overtime_h: float
     absence: Optional[str] = None
@@ -548,6 +557,7 @@ class PeriodOut(BaseModel):
     period_norm: float
     percent: float
     bucket: Optional[str] = None
+    deducted_hours: float = 0.0   # вычтено времени вне территории за период (уже учтено в worked_total)
     late_count: int
     late_minutes: int
     overtime_total: float

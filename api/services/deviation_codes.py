@@ -36,7 +36,11 @@ def dev_code(item: str) -> str:
 
 
 def detail_of(item: str) -> str | None:
-    """Человекочитаемая детализация (минуты/время) для re-entry; иначе None."""
+    """Человекочитаемая детализация (минуты/время) для re-entry; иначе None.
+
+    Возвращает ТОЛЬКО значимую часть без префикса «Выход с территории »
+    ('45 мин (12:00→12:50)'). Лейбл кода в UI уже содержит «Выход с
+    территории», поэтому хранить префикс в detail — это дублирование."""
     if item not in _MACHINE_CODES and item.startswith(_REENTRY_PREFIX):
-        return item
+        return item[len(_REENTRY_PREFIX):]
     return None

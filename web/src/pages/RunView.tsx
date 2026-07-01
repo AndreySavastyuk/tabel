@@ -172,7 +172,8 @@ function DeptTable({ title, rows }: { title: string; rows: DayRecord[] }) {
               <Fragment key={name}>
                 {sorted.map((r, i) => {
                   const hasBoth = r.entry && r.exit
-                  if (hasBoth) total += r.worked_hours
+                  const eff = r.effective_hours ?? r.worked_hours   // за вычетом отлучек
+                  if (hasBoth) total += eff
                   return (
                     <tr key={name + i}>
                       <td>{name}</td>
@@ -180,7 +181,10 @@ function DeptTable({ title, rows }: { title: string; rows: DayRecord[] }) {
                       <td className={!r.entry ? 'miss' : r.start_fixed ? 'fix' : r.entry_source === 'LEZ' ? 'lez' : ''}>{r.entry ?? '—'}</td>
                       <td className={!r.exit ? 'miss' : r.exit_source === 'LEZ' ? 'lez' : ''}>{r.exit ?? '—'}</td>
                       <td>{r.lunch_deducted ? r.lunch_deducted.toFixed(2) : '0'}</td>
-                      <td className={!hasBoth ? 'miss' : ''}>{hasBoth ? r.worked_hours.toFixed(2) : '—'}</td>
+                      <td className={!hasBoth ? 'miss' : ''}>
+                        {hasBoth ? eff.toFixed(2) : '—'}
+                        {r.deduct_minutes ? <span className="muted" title={`вычтено ${r.deduct_minutes} мин вне территории`}> −{(r.deduct_minutes / 60).toFixed(1)}ч</span> : null}
+                      </td>
                     </tr>
                   )
                 })}
@@ -213,7 +217,7 @@ function Deviations({ rows }: { rows: DayRecord[] }) {
             <td>{r.int_exit ?? '-'}</td>
             <td>{r.lez_entry ?? '-'}</td>
             <td>{r.lez_exit ?? '-'}</td>
-            <td>{r.entry && r.exit ? r.worked_hours.toFixed(2) : '-'}</td>
+            <td>{r.entry && r.exit ? (r.effective_hours ?? r.worked_hours).toFixed(2) : '-'}</td>
             <td className="bad">{r.deviations.map(devLabel).join('; ')}</td>
           </tr>
         ))}
@@ -239,7 +243,7 @@ function Accounting({ rows }: { rows: Period[] }) {
             <tr key={p.employee_id} className={low ? 'lowrow' : ''}>
               <td>{p.employee_name}</td>
               <td>{p.dept_name || 'Без отдела'}</td>
-              <td>{p.worked_total.toFixed(2)}</td>
+              <td>{p.worked_total.toFixed(2)}{p.deducted_hours ? <span className="muted" title="вычтено времени вне территории"> (−{p.deducted_hours.toFixed(1)}ч)</span> : null}</td>
               <td>{(p.credited_total - p.worked_total).toFixed(2)}</td>
               <td>{p.period_norm > 0 ? p.period_norm.toFixed(0) : '—'}</td>
               <td>{p.period_norm > 0 ? fmtPct(p.percent) : <span className="warn-txt">нет нормы</span>}</td>
@@ -267,7 +271,7 @@ function Norms({ rows }: { rows: Period[] }) {
             <td>{p.employee_name}</td>
             <td>{p.dept_name || 'Без отдела'}</td>
             <td>{p.schedule_code || '—'}</td>
-            <td>{p.worked_total.toFixed(2)}</td>
+            <td>{p.worked_total.toFixed(2)}{p.deducted_hours ? <span className="muted" title="вычтено времени вне территории"> (−{p.deducted_hours.toFixed(1)}ч)</span> : null}</td>
             <td>{p.credited_total.toFixed(2)}</td>
             <td>{p.period_norm > 0 ? p.period_norm.toFixed(0) : '—'}</td>
             <td>{p.period_norm > 0 ? (p.credited_total - p.period_norm).toFixed(2) : '—'}</td>

@@ -30,7 +30,8 @@ def test_machine_codes_pass_through():
 def test_reentry_actual_string_normalized():
     item = "Выход с территории 45 мин (12:00→12:50)"
     assert dev_code(item) == emodel.DEV_REENTRY == "REENTRY_GAP"
-    assert detail_of(item) == item
+    # detail — только значимая часть без префикса (лейбл кода уже его содержит).
+    assert detail_of(item) == "45 мин (12:00→12:50)"
 
 
 def test_reentry_label_is_not_the_stored_string():

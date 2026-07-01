@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..models import DayRecordRow, Employee, PipelineRun, ScheduleNorm
+from . import time_adjust
 
 
 def _month_of(work_date: str) -> str:
@@ -62,12 +63,14 @@ def monthly_summaries(db: Session, employee_id: int) -> list[dict]:
         for n in db.scalars(select(ScheduleNorm).where(ScheduleNorm.schedule_id == emp.schedule_id)):
             norms[n.month] = float(n.norm_hours)
 
+    dmap = time_adjust.deduction_map(db)
     months: dict = {}
     for r in rows:
         mk = _month_of(r.work_date)
         a = months.setdefault(mk, {"work_days": 0, "worked": 0.0, "ot": 0.0,
                                    "late_days": 0, "late_min": 0, "absent": 0})
-        worked = float(r.worked_hours)
+        # вычет времени вне территории (решение кадров/бухгалтера) уменьшает часы
+        worked = time_adjust.apply_day(r.worked_hours, dmap.get((employee_id, r.work_date), 0))
         if r.entry and r.exit and worked > 0:
             a["worked"] += worked
             a["work_days"] += 1

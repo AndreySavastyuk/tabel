@@ -187,6 +187,8 @@ export interface DayRecord {
   start_fixed: boolean
   lunch_deducted: number
   worked_hours: number
+  deduct_minutes?: number          // вычет времени вне территории (мин)
+  effective_hours?: number | null  // worked_hours за вычетом отлучек (null = нет вычета)
   lateness_min: number
   overtime_h: number
   absence?: string | null
@@ -245,6 +247,7 @@ export interface Period {
   period_norm: number
   percent: number
   bucket?: string | null
+  deducted_hours?: number          // вычтено времени вне территории за период
   late_count: number
   late_minutes: number
   overtime_total: number
@@ -410,6 +413,11 @@ export const DEV_STATUS_ORDER: DeviationStatus[] = ['new', 'in_progress', 'accep
 export const DEV_STATUS_LABEL: Record<DeviationStatus, string> = {
   new: 'новое', in_progress: 'в работе', accepted: 'принято', fixed: 'исправлено', ignored: 'проигнорировано',
 }
+// Решение по времени вне территории (влияет на отработанные часы).
+export type TimeDecision = 'pending' | 'counted' | 'deducted'
+export const TIME_DECISION_LABEL: Record<TimeDecision, string> = {
+  pending: 'не решено', counted: 'учтено', deducted: 'вычтено',
+}
 export interface DeviationItem {
   id: number
   run_id: number
@@ -420,6 +428,9 @@ export interface DeviationItem {
   dev_label?: string | null
   detail?: string | null
   status: DeviationStatus
+  away_minutes: number             // суммарно вне территории за день, мин
+  deduct_minutes?: number | null   // сколько вычесть (null = не решено)
+  time_decision: TimeDecision
   is_present: boolean
   assignee_id?: number | null
   assignee_name?: string | null

@@ -17,7 +17,7 @@ from ..models import Employee
 from ..schemas import (DayExplainOut, DayRecordOut, EmployeeBulkAssign,
                        EmployeeCreate, EmployeeOut, EmployeeUpdate, MonthSummary,
                        employee_out)
-from ..services import employee_stats, explain
+from ..services import employee_stats, explain, time_adjust
 
 router = APIRouter(prefix="/employees", tags=["employees"])
 
@@ -126,10 +126,15 @@ def employee_days(emp_id: int, month: str = Query(..., pattern=r"^\d{4}-\d{2}$")
     if e is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Сотрудник не найден")
     _require_access(user, e)
+    dmap = time_adjust.deduction_map(db)
     out = []
     for r in employee_stats.daily_records(db, emp_id, month):
         o = DayRecordOut.model_validate(r)
         o.employee_name = e.full_name
+        m = dmap.get((emp_id, r.work_date), 0)
+        if m:
+            o.deduct_minutes = int(m)
+            o.effective_hours = time_adjust.apply_day(r.worked_hours, m)
         out.append(o)
     return out
 

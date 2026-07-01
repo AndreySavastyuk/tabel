@@ -8,10 +8,11 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from engine import model, report
+from engine import compute, model, report
 from engine.calendar import make_calendar_weekend_fn
 
 from ..models import DayRecordRow, Employee, PeriodSummary
+from . import time_adjust
 from .refdata_from_db import load_calendar
 
 
@@ -19,7 +20,7 @@ def _emp_names(db: Session) -> dict:
     return {e.id: e.normalized_name for e in db.scalars(select(Employee)).all()}
 
 
-def _records_from_db(db: Session, run_id: int) -> dict:
+def _records_from_db(db: Session, run_id: int, dmap: dict) -> dict:
     names = _emp_names(db)
     recs: dict = {}
     rows = db.scalars(
@@ -35,7 +36,10 @@ def _records_from_db(db: Session, run_id: int) -> dict:
         dr.start_fixed, dr.original_start = r.start_fixed, r.original_start
         dr.raw_hours = float(r.raw_hours)
         dr.lunch_deducted = float(r.lunch_deducted)
-        dr.worked_hours = float(r.worked_hours)
+        # Вычет времени вне территории (решение кадров/бухгалтера) — уменьшает
+        # отработанные часы дня. Ограничен часами дня (см. time_adjust.apply_day).
+        m = dmap.get((r.employee_id, r.work_date), 0)
+        dr.worked_hours = time_adjust.apply_day(r.worked_hours, m) if m else float(r.worked_hours)
         dr.schedule, dr.dept, dr.cabinet = r.schedule_code, r.dept_name, r.cabinet
         dr.lez_controlled, dr.dual_tracked = r.lez_controlled, r.dual_tracked
         dr.day_norm = float(r.day_norm)
@@ -53,7 +57,7 @@ def _records_from_db(db: Session, run_id: int) -> dict:
     return recs
 
 
-def _periods_from_db(db: Session, run_id: int) -> dict:
+def _periods_from_db(db: Session, run_id: int, applied: dict) -> dict:
     names = _emp_names(db)
     out: dict = {}
     for p in db.scalars(select(PeriodSummary).where(PeriodSummary.run_id == run_id)).all():
@@ -68,6 +72,15 @@ def _periods_from_db(db: Session, run_id: int) -> dict:
         ep.overtime_total = float(p.overtime_total)
         ep.percent = float(p.percent)
         ep.bucket = p.bucket or ""
+        # Тот же вычет, что и по дням (сумма ограниченных дневных вычетов) —
+        # лист по отделу и лист «Бухгалтерия» остаются согласованными.
+        ded = applied.get(p.employee_id, 0.0)
+        if ded:
+            ep.worked_total = round(ep.worked_total - ded, 2)
+            ep.credited_total = round(ep.credited_total - ded, 2)
+            if ep.period_norm > 0:
+                ep.percent = round(ep.credited_total / ep.period_norm * 100.0, 1)
+                ep.bucket = compute.bucket_of(ep.percent)
         out[ep.name] = ep
     return out
 
@@ -90,8 +103,10 @@ def write_workbook_from(records: dict, periods: dict, weekend_fn) -> BytesIO:
 
 
 def write_workbook(db: Session, run_id: int) -> BytesIO:
-    """Аналитический xlsx прогона из БД."""
-    records = _records_from_db(db, run_id)
-    periods = _periods_from_db(db, run_id)
+    """Аналитический xlsx прогона из БД (с учётом вычетов времени вне территории)."""
+    dmap = time_adjust.deduction_map(db)
+    applied = time_adjust.run_applied_by_employee(db, run_id, dmap)
+    records = _records_from_db(db, run_id, dmap)
+    periods = _periods_from_db(db, run_id, applied)
     weekend_fn = make_calendar_weekend_fn(*load_calendar(db))
     return write_workbook_from(records, periods, weekend_fn)

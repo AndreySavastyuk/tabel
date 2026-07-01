@@ -19,8 +19,9 @@ from ..deps import get_current_user, require_role, scoped_department_id
 from ..models import DayRecordRow, Employee, PeriodSummary, PipelineRun, Upload
 from ..schemas import (DayDiff, DayRecordOut, PeriodOut, RunCreate, RunDiffOut,
                        RunOut)
-from ..services import export, ingestion
+from ..services import export, ingestion, time_adjust
 from ..services.deviation_codes import dev_code
+from engine import compute as ecompute
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
@@ -117,10 +118,15 @@ def run_day_records(run_id: int, db: Session = Depends(get_db),
     stmt = stmt.order_by(DayRecordRow.id).limit(limit).offset(offset)
     rows = db.scalars(stmt).all()
     names = {e.id: e.full_name for e in db.scalars(select(Employee)).all()}
+    dmap = time_adjust.deduction_map(db)
     out = []
     for r in rows:
         o = DayRecordOut.model_validate(r)
         o.employee_name = names.get(r.employee_id)
+        m = dmap.get((r.employee_id, r.work_date), 0)
+        if m:
+            o.deduct_minutes = int(m)
+            o.effective_hours = time_adjust.apply_day(r.worked_hours, m)
         out.append(o)
     return out
 
@@ -132,10 +138,20 @@ def run_periods(run_id: int, db: Session = Depends(get_db)):
         select(PeriodSummary).where(PeriodSummary.run_id == run_id)
         .order_by(PeriodSummary.percent)).all()
     names = {e.id: e.full_name for e in db.scalars(select(Employee)).all()}
+    # Вычет времени вне территории уменьшает отработанные/зачтённые часы и %.
+    applied = time_adjust.run_applied_by_employee(db, run_id)
     out = []
     for r in rows:
         o = PeriodOut.model_validate(r)
         o.employee_name = names.get(r.employee_id)
+        ded = applied.get(r.employee_id, 0.0)
+        if ded:
+            o.deducted_hours = ded
+            o.worked_total = round(o.worked_total - ded, 2)
+            o.credited_total = round(o.credited_total - ded, 2)
+            if o.period_norm > 0:
+                o.percent = round(o.credited_total / o.period_norm * 100.0, 1)
+                o.bucket = ecompute.bucket_of(o.percent)
         out.append(o)
     return out
 

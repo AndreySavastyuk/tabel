@@ -127,6 +127,11 @@ select { border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px;
 .assignbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .selrow td { background: #eaf1ff; }
 
+/* отклонения: интервалы отлучек столбиком + ячейка решения о вычете */
+.intervals { font-weight: 400; font-size: 12px; margin-top: 3px; line-height: 1.5; }
+.awaycell { font-size: 12px; }
+.awaycell .actions { display: flex; gap: 6px; }
+
 /* norms grid */
 .normsgrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
 .normcell { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }

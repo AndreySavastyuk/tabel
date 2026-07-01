@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from engine.model import DEV_LABELS
 
-from ..constants import DeviationStatus, Role
+from ..constants import MONEY_ROLES, DeviationStatus, Role, TimeDecision
 from ..db import get_db
 from ..deps import get_current_user, scoped_department_id
 from ..models import DeviationComment, DeviationItem, Employee, User
@@ -23,7 +23,18 @@ router = APIRouter(prefix="/deviations", tags=["deviations"])
 _VALID = {s.value for s in DeviationStatus}
 _TERMINAL = {DeviationStatus.accepted.value, DeviationStatus.fixed.value,
              DeviationStatus.ignored.value}
+_TIME_VALID = {d.value for d in TimeDecision}
+# Кто вправе решать вычет времени (влияет на зарплатные часы) — кадры/бухгалтер.
+_DEDUCT_ROLES = {r.value for r in MONEY_ROLES}
 _UNSET = object()
+
+
+def _time_note(it: "DeviationItem") -> str:
+    if it.time_decision == TimeDecision.deducted.value:
+        return f"Время вне территории: вычтено {it.deduct_minutes or 0} мин из рабочего дня"
+    if it.time_decision == TimeDecision.counted.value:
+        return "Время вне территории: оставлено как отработанное"
+    return "Время вне территории: решение снято"
 
 
 def _decorate(db: Session, items) -> list[DeviationItemOut]:
@@ -64,7 +75,7 @@ def _load_scoped(db: Session, user, dev_id: int) -> DeviationItem:
 
 
 def _apply_change(db: Session, it: DeviationItem, user, *, new_status=None,
-                  note=None, assignee_id=_UNSET):
+                  note=None, assignee_id=_UNSET, time_decision=None, deduct_minutes=_UNSET):
     if new_status is not None and new_status != it.status:
         if new_status not in _VALID:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -80,6 +91,27 @@ def _apply_change(db: Session, it: DeviationItem, user, *, new_status=None,
         it.resolution_note = note
     if assignee_id is not _UNSET:
         it.assignee_id = assignee_id
+
+    # Решение по времени вне территории (вычет из рабочего дня). deduct_minutes
+    # по умолчанию — вся сумма отлучек (away_minutes); можно переопределить.
+    if time_decision is not None:
+        if time_decision not in _TIME_VALID:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"Недопустимое решение по времени: {time_decision}")
+        before = (it.time_decision, it.deduct_minutes)
+        it.time_decision = time_decision
+        if time_decision == TimeDecision.deducted.value:
+            m = deduct_minutes if (deduct_minutes is not _UNSET and deduct_minutes is not None) else it.away_minutes
+            it.deduct_minutes = max(0, int(m or 0))
+        else:
+            it.deduct_minutes = None
+        if (it.time_decision, it.deduct_minutes) != before:
+            db.add(DeviationComment(deviation_id=it.id, author_id=user.id, body=_time_note(it)))
+    elif deduct_minutes is not _UNSET and it.time_decision == TimeDecision.deducted.value:
+        m = max(0, int(deduct_minutes or 0))
+        if it.deduct_minutes != m:
+            it.deduct_minutes = m
+            db.add(DeviationComment(deviation_id=it.id, author_id=user.id, body=_time_note(it)))
 
 
 @router.get("", response_model=list[DeviationItemOut])
@@ -139,6 +171,13 @@ def bulk_deviations(body: DeviationBulkIn, db: Session = Depends(get_db),
     if body.status is not None and body.status not in _VALID:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                             f"Недопустимый статус: {body.status}")
+    if body.time_decision is not None:
+        if body.time_decision not in _TIME_VALID:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"Недопустимое решение по времени: {body.time_decision}")
+        if user.role not in _DEDUCT_ROLES:
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "Решение о вычете времени доступно только кадрам и бухгалтеру")
     items = db.scalars(select(DeviationItem).where(DeviationItem.id.in_(body.ids))).all()
     is_head = user.role == Role.dept_head.value
     dep = scoped_department_id(user)
@@ -148,7 +187,8 @@ def bulk_deviations(body: DeviationBulkIn, db: Session = Depends(get_db),
         if is_head and (dep is None or it.department_id != dep):
             skipped += 1
             continue
-        _apply_change(db, it, user, new_status=body.status, note=body.note, assignee_id=assignee)
+        _apply_change(db, it, user, new_status=body.status, note=body.note,
+                      assignee_id=assignee, time_decision=body.time_decision)
         updated += 1
     db.commit()
     return {"updated": updated, "skipped": skipped}
@@ -178,8 +218,13 @@ def patch_deviation(dev_id: int, body: DeviationPatch, db: Session = Depends(get
                     user=Depends(get_current_user)):
     it = _load_scoped(db, user, dev_id)
     data = body.model_dump(exclude_unset=True)
+    if ("time_decision" in data or "deduct_minutes" in data) and user.role not in _DEDUCT_ROLES:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Решение о вычете времени доступно только кадрам и бухгалтеру")
     _apply_change(db, it, user, new_status=data.get("status"), note=data.get("note"),
-                  assignee_id=data["assignee_id"] if "assignee_id" in data else _UNSET)
+                  assignee_id=data["assignee_id"] if "assignee_id" in data else _UNSET,
+                  time_decision=data.get("time_decision"),
+                  deduct_minutes=data["deduct_minutes"] if "deduct_minutes" in data else _UNSET)
     db.commit()
     return _decorate(db, [it])[0]
 

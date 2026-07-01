@@ -249,8 +249,13 @@ class DeviationItem(Base):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"), index=True)  # скоуп руководителя
     work_date: Mapped[str] = mapped_column(String(10))             # "DD.MM.YYYY"
     dev_code: Mapped[str] = mapped_column(String(40), index=True)  # стабильный код (REENTRY_GAP и т.п.)
-    detail: Mapped[str | None] = mapped_column(Text)               # минуты/время для re-entry
+    detail: Mapped[str | None] = mapped_column(Text)               # интервалы отлучек для re-entry
     status: Mapped[str] = mapped_column(String(12), default="new")  # constants.DeviationStatus
+    # Время вне территории (отлучки ЛЭЗ) и решение по нему. Влияет на зарплатные
+    # часы: time_decision='deducted' вычитает deduct_minutes из рабочего дня.
+    away_minutes: Mapped[int] = mapped_column(Integer, default=0)   # суммарно за день, мин
+    deduct_minutes: Mapped[int | None] = mapped_column(Integer)     # сколько вычесть (None — не решено)
+    time_decision: Mapped[str] = mapped_column(String(12), default="pending")  # constants.TimeDecision
     is_present: Mapped[bool] = mapped_column(Boolean, default=True)
     assignee_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
     dept_name: Mapped[str | None] = mapped_column(String(255))     # денорм для отображения

@@ -22,15 +22,16 @@ from api import security
 from api.constants import Role
 from api.db import Base, get_db
 from api.main import app
-from api.models import (Department, DeviationItem, Employee, PipelineRun, User)
-from api.services import ingestion
+from api.models import (Department, DayRecordRow, DeviationItem, Employee, PipelineRun, User)
+from api.services import ingestion, time_adjust
 from engine import model
 
 
-def _dr(name, date, devs, dept="Цех"):
+def _dr(name, date, devs, dept="Цех", lez_events=None):
     dr = model.DayRecord(name=name, date=date)
     dr.dept = dept
     dr.deviations = devs
+    dr.lez_events = lez_events or []      # сырые отметки ЛЭЗ (для «выхода с территории»)
     return dr
 
 
@@ -128,17 +129,62 @@ def test_sync_marks_absent_when_gone(ctx):
     db.close()
 
 
-def test_sync_reentry_normalized(ctx):
+def test_sync_reentry_from_lez_events(ctx):
+    """«Выход с территории» считается из сырых отметок ЛЭЗ (сумма отлучек за
+    день), а НЕ из строки движка. Строка движка в deviations игнорируется."""
     _, TS, ids = ctx
     eid = ids["E"]
     db = TS()
     rid = _run(db)
+    lez = [("12:00", "Выход"), ("12:50", "Вход")]      # 50 мин вне территории
     ingestion._sync_deviations(
-        db, rid, {"E": [_dr("E", "10.04.2026", ["Выход с территории 45 мин (12:00→12:50)"])]}, {"E": eid})
+        db, rid, {"E": [_dr("E", "10.04.2026", ["Выход с территории 999 мин (x)"], lez_events=lez)]},
+        {"E": eid})
+    db.commit()
+    it = db.scalars(select(DeviationItem)).one()        # ровно один (строка движка не плодит второй)
+    assert it.dev_code == "REENTRY_GAP"
+    assert it.away_minutes == 50
+    assert it.detail and "12:00→12:50" in it.detail and "50 мин" in it.detail
+    db.close()
+
+
+def test_away_daily_sum_threshold(ctx):
+    """Несколько КОРОТКИХ отлучек суммируются: > 30 мин суммарно → флаг;
+    суммарно <= 30 мин → отклонения нет (в отличие от порога на эпизод)."""
+    _, TS, ids = ctx
+    db = TS()
+    rid = _run(db)
+    # три выхода по 15 мин = 45 мин суммарно (> 30) → флаг
+    big = [("10:00", "Выход"), ("10:15", "Вход"),
+           ("12:00", "Выход"), ("12:15", "Вход"),
+           ("15:00", "Выход"), ("15:15", "Вход")]
+    ingestion._sync_deviations(db, rid, {"E": [_dr("E", "10.04.2026", [], lez_events=big)]}, {"E": ids["E"]})
+    # два выхода по 10 мин = 20 мин суммарно (<= 30) → нет флага
+    small = [("10:00", "Выход"), ("10:10", "Вход"), ("12:00", "Выход"), ("12:10", "Вход")]
+    ingestion._sync_deviations(db, rid, {"F": [_dr("F", "10.04.2026", [], dept="Офис", lez_events=small)]}, {"F": ids["F"]})
+    db.commit()
+    items = {it.employee_id: it for it in db.scalars(select(DeviationItem))}
+    assert ids["E"] in items and items[ids["E"]].away_minutes == 45
+    assert ids["F"] not in items
+    db.close()
+
+
+def test_away_threshold_configurable(ctx):
+    """Порог дневной суммы отлучек берётся из настроек (away_daily_min)."""
+    _, TS, ids = ctx
+    db = TS()
+    rid = _run(db)
+    lez = [("10:00", "Выход"), ("10:40", "Вход")]      # 40 мин вне территории
+    recs = {"E": [_dr("E", "10.04.2026", [], lez_events=lez)]}
+    # порог 60 мин — 40 мин не дотягивают, отклонения нет
+    ingestion._sync_deviations(db, rid, recs, {"E": ids["E"]}, away_daily_min=60)
+    db.commit()
+    assert db.scalars(select(DeviationItem)).first() is None
+    # порог 30 мин — те же 40 мин уже флагуются
+    ingestion._sync_deviations(db, rid, recs, {"E": ids["E"]}, away_daily_min=30)
     db.commit()
     it = db.scalars(select(DeviationItem)).one()
-    assert it.dev_code == "REENTRY_GAP"
-    assert it.detail and "45 мин" in it.detail
+    assert it.dev_code == "REENTRY_GAP" and it.away_minutes == 40
     db.close()
 
 
@@ -180,6 +226,55 @@ def test_api_bulk_and_dept_scope(ctx):
     assert client.patch(f"/deviations/{f_item}", json={"status": "ignored"}, headers=ruk).status_code == 403
     r2 = client.post("/deviations/bulk", json={"ids": [e_item, f_item], "status": "ignored"}, headers=admin)
     assert r2.json()["updated"] == 2
+
+
+def _reentry_item(eid, dept_id, rid, away=90, deduct=None, decision="pending", date="10.04.2026"):
+    return DeviationItem(dedup_key=f"{eid}|{date}|REENTRY_GAP", run_id=rid, employee_id=eid,
+                         department_id=dept_id, work_date=date, dev_code="REENTRY_GAP",
+                         away_minutes=away, deduct_minutes=deduct, time_decision=decision,
+                         status="new", is_present=True,
+                         first_seen_at=datetime(2026, 5, 1), last_seen_at=datetime(2026, 5, 1))
+
+
+def test_time_decision_gating_and_default(ctx):
+    """Вычет времени: доступен кадрам/бухгалтеру (не руководителю); по умолчанию
+    вычитается вся сумма отлучек; сумму можно переопределить и решение — снять."""
+    client, TS, ids = ctx
+    db = TS()
+    rid = _run(db)
+    db.add(_reentry_item(ids["E"], ids["dept"], rid, away=90))
+    db.commit()
+    did = db.scalars(select(DeviationItem)).one().id
+    db.close()
+    admin = tok(client, "admin", "admin")
+    ruk = tok(client, "ruk", "ruk")
+    # руководителю нельзя решать вычет (влияет на зарплату)
+    assert client.patch(f"/deviations/{did}", json={"time_decision": "deducted"}, headers=ruk).status_code == 403
+    # кадры: вычет по умолчанию = вся сумма отлучек
+    r = client.patch(f"/deviations/{did}", json={"time_decision": "deducted"}, headers=admin)
+    assert r.status_code == 200 and r.json()["time_decision"] == "deducted" and r.json()["deduct_minutes"] == 90
+    # переопределение суммы вычета
+    assert client.patch(f"/deviations/{did}", json={"deduct_minutes": 60}, headers=admin).json()["deduct_minutes"] == 60
+    # снять вычет — минуты обнуляются
+    r3 = client.patch(f"/deviations/{did}", json={"time_decision": "counted"}, headers=admin)
+    assert r3.json()["time_decision"] == "counted" and r3.json()["deduct_minutes"] is None
+
+
+def test_time_adjust_deduction_math(ctx):
+    """deduction_map / run_applied_by_employee / apply_day: дневной вычет
+    ограничен часами дня, свод = сумма дневных вычетов."""
+    _, TS, ids = ctx
+    db = TS()
+    rid = _run(db)
+    db.add(DayRecordRow(run_id=rid, employee_id=ids["E"], work_date="10.04.2026",
+                        entry="08:00", exit="17:00", worked_hours=8.0))
+    db.add(_reentry_item(ids["E"], ids["dept"], rid, away=90, deduct=90, decision="deducted"))
+    db.commit()
+    assert time_adjust.deduction_map(db)[(ids["E"], "10.04.2026")] == 90
+    assert time_adjust.run_applied_by_employee(db, rid)[ids["E"]] == 1.5   # 90 мин, worked 8 ч
+    assert time_adjust.apply_day(8.0, 90) == 6.5
+    assert time_adjust.apply_day(1.0, 90) == 0.0                            # вычет не уводит в минус
+    db.close()
 
 
 def test_api_assignee_and_users(ctx):

@@ -22,6 +22,13 @@ from .deviation_codes import detail_of, dev_code
 from .refdata_from_db import (build_fixed_times, build_refdata,
                               load_calendar, load_thresholds)
 
+# Порог по СУММЕ отлучек ЛЭЗ за день (мин): если суммарно человек был вне
+# территории дольше — заводим отклонение «Выход с территории». В отличие от
+# движка (порог на КАЖДЫЙ эпизод) здесь суммируются все выходы, в т.ч. короткие.
+# Значение по умолчанию; фактически берётся из порогов прогона (Настройки →
+# ключ away_daily_min), см. _persist.
+AWAY_DAILY_MIN = 30
+
 
 def _assemble_workdir(uploads) -> str:
     """Копирует загрузки в temp-папку с именами, которые ждёт engine.bases."""
@@ -104,7 +111,8 @@ def _resolve_employees(db: Session, names) -> dict:
     return emap
 
 
-def _persist(db: Session, run_id: int, records, periods, base, lezbase, points, emap):
+def _persist(db: Session, run_id: int, records, periods, base, lezbase, points, emap,
+             thresholds=None):
     db.execute(delete(DayRecordRow).where(DayRecordRow.run_id == run_id))
     db.execute(delete(PeriodSummary).where(PeriodSummary.run_id == run_id))
     db.execute(delete(AccessEvent).where(AccessEvent.run_id == run_id))
@@ -160,10 +168,11 @@ def _persist(db: Session, run_id: int, records, periods, base, lezbase, points, 
     if events:
         db.execute(insert(AccessEvent), events)
 
-    _sync_deviations(db, run_id, records, emap)
+    away = int((thresholds or emodel.THRESHOLDS).get("away_daily_min", AWAY_DAILY_MIN))
+    _sync_deviations(db, run_id, records, emap, away_daily_min=away)
 
 
-def _sync_deviations(db: Session, run_id: int, records, emap):
+def _sync_deviations(db: Session, run_id: int, records, emap, away_daily_min=AWAY_DAILY_MIN):
     """Синхронизирует deviation_items против отклонений этого прогона.
 
     Ключ employee_id|work_date|dev_code run-независим: повторный прогон того же
@@ -183,17 +192,27 @@ def _sync_deviations(db: Session, run_id: int, records, emap):
         if eid is None:
             continue
         for dr in recs:
+            fields = dict(dept_name=dr.dept, department_id=dept_by_eid.get(eid))
+            # 1) обычные коды из движка. Re-entry движка ПРОПУСКАЕМ — «выход с
+            #    территории» пересчитываем сами по ДНЕВНОЙ СУММЕ отлучек (ниже).
             for item in (dr.deviations or []):
                 code = dev_code(item)
+                if code == emodel.DEV_REENTRY:
+                    continue
                 key = f"{eid}|{dr.date}|{code}"
-                det = detail_of(item)
-                cur = present.get(key)
-                if cur is None:
+                if key not in present:
                     present[key] = dict(employee_id=eid, work_date=dr.date, dev_code=code,
-                                        detail=det, dept_name=dr.dept,
-                                        department_id=dept_by_eid.get(eid))
-                elif det and not cur["detail"]:
-                    cur["detail"] = det
+                                        detail=detail_of(item), away_minutes=0, **fields)
+            # 2) выход с территории: сумма ВСЕХ отлучек ЛЭЗ за день (в т.ч. < 30 мин
+            #    по отдельности); флаг, если суммарно за день > порога.
+            episodes = compute.lez_reentry_gaps(dr.lez_events, 0)
+            total = sum(m for _, _, m in episodes)
+            if total > away_daily_min:
+                key = f"{eid}|{dr.date}|{emodel.DEV_REENTRY}"
+                detail = "; ".join(f"{t_out}→{t_in} · {m} мин" for t_out, t_in, m in episodes)
+                present[key] = dict(employee_id=eid, work_date=dr.date,
+                                    dev_code=emodel.DEV_REENTRY, detail=detail,
+                                    away_minutes=int(total), **fields)
 
     now = datetime.now(timezone.utc)
     existing = {}
@@ -207,17 +226,19 @@ def _sync_deviations(db: Session, run_id: int, records, emap):
             db.add(DeviationItem(
                 dedup_key=key, run_id=run_id, employee_id=f["employee_id"],
                 department_id=f["department_id"], work_date=f["work_date"],
-                dev_code=f["dev_code"], detail=f["detail"], dept_name=f["dept_name"],
-                status=DeviationStatus.new.value, is_present=True,
+                dev_code=f["dev_code"], detail=f["detail"], away_minutes=f["away_minutes"],
+                dept_name=f["dept_name"], status=DeviationStatus.new.value, is_present=True,
                 first_seen_at=now, last_seen_at=now))
         else:
             di.run_id = run_id
             di.detail = f["detail"]
+            di.away_minutes = f["away_minutes"]
             di.dept_name = f["dept_name"]
             di.department_id = f["department_id"]
             di.is_present = True
             di.last_seen_at = now
-            # status / assignee_id / resolution_note / comments — НЕ трогаем
+            # status / assignee / comments / time_decision / deduct_minutes — НЕ трогаем
+            # (решение о вычете переживает перепрогон; сумма меняется, решение — нет)
 
     # исчезнувшие: ранее наблюдались этим прогоном, теперь отсутствуют
     gone = select(DeviationItem).where(
@@ -246,7 +267,7 @@ def process_run(run_id: int, SessionFactory, names=None):
         records, periods, base, lezbase, points, _wf, thresholds = compute_analytics(
             db, wp, names=names, period_from=period_from, period_to=period_to)
         emap = _resolve_employees(db, set(base) | set(lezbase))
-        _persist(db, run_id, records, periods, base, lezbase, points, emap)
+        _persist(db, run_id, records, periods, base, lezbase, points, emap, thresholds=thresholds)
         run = db.get(PipelineRun, run_id)
         run.status = "done"
         run.thresholds = thresholds

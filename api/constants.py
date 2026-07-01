@@ -37,6 +37,14 @@ class DeviationStatus(str, Enum):
     ignored = "ignored"          # проигнорировано
 
 
+class TimeDecision(str, Enum):
+    """Решение по времени вне территории (отлучки ЛЭЗ) на отклонении REENTRY_GAP.
+    Влияет на отработанные часы: 'deducted' вычитает `deduct_minutes` из дня."""
+    pending = "pending"          # решение не принято — время пока засчитано
+    counted = "counted"          # проверено, оставить как отработанное
+    deducted = "deducted"        # вычесть время отлучек из рабочего дня
+
+
 class AliasSource(str, Enum):
     stork = "stork"
     sigur = "sigur"
