@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, type Department, type Employee, type Schedule } from '../api'
+import { api, fmtIsoDate, type Department, type Employee, type Schedule } from '../api'
 import { useAuth } from '../auth'
 
 export default function Employees() {
@@ -15,6 +15,8 @@ export default function Employees() {
   const [deptFilter, setDeptFilter] = useState('')
   const [noSchedule, setNoSchedule] = useState(false)
   const [noDept, setNoDept] = useState(false)
+  const [vehOnly, setVehOnly] = useState(false)
+  const [showDismissed, setShowDismissed] = useState(false)
   const [sel, setSel] = useState<Set<number>>(new Set())
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
@@ -27,6 +29,8 @@ export default function Employees() {
   const [cabVal, setCabVal] = useState('')
   const [aSched, setASched] = useState(false)
   const [schedVal, setSchedVal] = useState('')
+  const [aVeh, setAVeh] = useState(false)
+  const [vehVal, setVehVal] = useState('yes')
 
   const deptName = useMemo(() => Object.fromEntries(depts.map((d) => [d.id, d.name])), [depts])
   const schedCode = useMemo(() => Object.fromEntries(scheds.map((s) => [s.id, s.code])), [scheds])
@@ -35,6 +39,7 @@ export default function Employees() {
     noDept: rows.filter((e) => !e.department_id).length,
     noSchedule: rows.filter((e) => !e.schedule_id).length,
     lez: rows.filter((e) => e.lez_controlled).length,
+    vehicle: rows.filter((e) => e.arrives_by_car).length,
   }), [rows])
 
   const load = async () => {
@@ -46,6 +51,8 @@ export default function Employees() {
       if (deptFilter) params.set('department_id', deptFilter)
       if (noSchedule) params.set('no_schedule', 'true')
       if (noDept) params.set('no_department', 'true')
+      if (vehOnly) params.set('vehicle_only', 'true')
+      if (showDismissed) params.set('include_dismissed', 'true')
       const [emps, ds, ss] = await Promise.all([
         api.get<Employee[]>(`/employees?${params}`),
         api.get<Department[]>('/departments'),
@@ -90,6 +97,7 @@ export default function Employees() {
     if (aDept) payload.department_id = deptVal ? Number(deptVal) : null
     if (aCab) payload.cabinet = cabVal || null
     if (aSched) payload.schedule_id = schedVal ? Number(schedVal) : null
+    if (aVeh) payload.arrives_by_car = vehVal === 'yes'
     if (Object.keys(payload).length === 1) {
       setErr('Отметьте хотя бы одно поле для присвоения')
       return
@@ -109,21 +117,31 @@ export default function Employees() {
     <div>
       <div className="pagehead">
         <h2>Сотрудники <span className="muted">({rows.length})</span></h2>
-        <form onSubmit={search} className="searchbar">
+      </div>
+      {err && <div className="error">{err}</div>}
+      {msg && <div className="ok-box">{msg}</div>}
+
+      <form onSubmit={search} className="card panel filterbar">
+        <div className="frow">
           <input placeholder="Поиск по ФИО" value={q} onChange={(e) => setQ(e.target.value)} />
           <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)}>
             <option value="">Все отделы</option>
             {depts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
+          <button>Показать</button>
+        </div>
+        <div className="frow">
+          <span className="flabel">Фильтры:</span>
           <label className="chk"><input type="checkbox" checked={noSchedule}
             onChange={(e) => setNoSchedule(e.target.checked)} /> без графика</label>
           <label className="chk"><input type="checkbox" checked={noDept}
             onChange={(e) => setNoDept(e.target.checked)} /> без отдела</label>
-          <button>Показать</button>
-        </form>
-      </div>
-      {err && <div className="error">{err}</div>}
-      {msg && <div className="ok-box">{msg}</div>}
+          <label className="chk"><input type="checkbox" checked={vehOnly}
+            onChange={(e) => setVehOnly(e.target.checked)} /> 🚗 личный транспорт</label>
+          <label className="chk"><input type="checkbox" checked={showDismissed}
+            onChange={(e) => setShowDismissed(e.target.checked)} /> показывать уволенных</label>
+        </div>
+      </form>
 
       <div className="metric-grid">
         <div className="metric-card">
@@ -145,6 +163,11 @@ export default function Employees() {
           <div className="metric-label">Контроль ЛЭЗ</div>
           <div className="metric-value">{stats.lez}</div>
           <div className="metric-note">сверка проходной</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Личный транспорт</div>
+          <div className="metric-value">{stats.vehicle}</div>
+          <div className="metric-note">заезжают на машине</div>
         </div>
       </div>
 
@@ -170,6 +193,11 @@ export default function Employees() {
             <option value="">(очистить)</option>
             {scheds.map((s) => <option key={s.id} value={s.id}>{s.code}</option>)}
           </select>
+          <label className="chk"><input type="checkbox" checked={aVeh} onChange={(e) => setAVeh(e.target.checked)} /> 🚗 Транспорт</label>
+          <select disabled={!aVeh} value={vehVal} onChange={(e) => setVehVal(e.target.value)}>
+            <option value="yes">да</option>
+            <option value="no">нет</option>
+          </select>
           <button onClick={apply}>Применить</button>
         </div>
       )}
@@ -184,9 +212,13 @@ export default function Employees() {
           </thead>
           <tbody>
             {rows.map((e) => (
-              <tr key={e.id} className={sel.has(e.id) ? 'selrow' : ''}>
+              <tr key={e.id} className={`${sel.has(e.id) ? 'selrow' : ''} ${e.dismissed_at ? 'dismissed-row' : ''}`}>
                 {isAdmin && <td><input type="checkbox" checked={sel.has(e.id)} onChange={() => toggle(e.id)} /></td>}
-                <td><button className="link" onClick={() => nav(`/employees/${e.id}`)}>{e.full_name}</button></td>
+                <td>
+                  <button className="link" onClick={() => nav(`/employees/${e.id}`)}>{e.full_name}</button>
+                  {e.arrives_by_car && <span className="veh-badge" title="Личный транспорт — заезжает на машине">🚗</span>}
+                  {e.dismissed_at && <span className="dis-badge" title="Последний рабочий день">уволен {fmtIsoDate(e.dismissed_at)}</span>}
+                </td>
                 <td>{e.department_id ? deptName[e.department_id] ?? '—' : '—'}</td>
                 <td>{e.cabinet || '—'}</td>
                 <td className={!e.schedule_id ? 'muted' : ''}>{e.schedule_id ? schedCode[e.schedule_id] ?? '—' : 'нет'}</td>

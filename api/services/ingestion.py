@@ -111,8 +111,49 @@ def _resolve_employees(db: Session, names) -> dict:
     return emap
 
 
+def strip_vehicle_deviations(db: Session, records, emap):
+    """Убирает ONLY_INTERNAL у сотрудников с флагом «личный транспорт»: они
+    заезжают на территорию на машине, и отсутствие отметки на пешеходной
+    проходной ЛЭЗ — норма, а не «отметился за отсутствующего». Фильтр живёт в
+    api-слое ДО записи (движок не трогаем — golden-тесты), поэтому дневные
+    ячейки, очередь отклонений и xlsx видят одно и то же."""
+    pv_ids = set(db.scalars(select(Employee.id).where(Employee.arrives_by_car.is_(True))))
+    if not pv_ids:
+        return
+    for nm, recs in records.items():
+        if emap.get(nm) not in pv_ids:
+            continue
+        for dr in recs:
+            if dr.deviations and emodel.DEV_ONLY_INTERNAL in dr.deviations:
+                dr.deviations = [d for d in dr.deviations if d != emodel.DEV_ONLY_INTERNAL]
+
+
+def strip_dismissed_days(db: Session, records, emap):
+    """С даты увольнения (последний рабочий день) отклонения дня не заводятся:
+    сотрудник сдаёт пропуск, поэтому отметки последнего дня ломаются — «нет
+    выхода», «расхождение систем», «выход с территории» были бы ложными.
+    Дни ДО даты увольнения не трогаются. Чистятся и сырые отметки ЛЭЗ дня
+    (dr.lez_events), чтобы дневная сумма отлучек тоже не флаговалась."""
+    dmap = dict(db.execute(
+        select(Employee.id, Employee.dismissed_at)
+        .where(Employee.dismissed_at.isnot(None))).all())
+    if not dmap:
+        return
+    for nm, recs in records.items():
+        dd = dmap.get(emap.get(nm))
+        if dd is None:
+            continue
+        for dr in recs:
+            d = compute.parse_ddmmyyyy(dr.date)
+            if d is not None and d >= dd:
+                dr.deviations = []
+                dr.lez_events = []
+
+
 def _persist(db: Session, run_id: int, records, periods, base, lezbase, points, emap,
              thresholds=None):
+    strip_vehicle_deviations(db, records, emap)
+    strip_dismissed_days(db, records, emap)
     db.execute(delete(DayRecordRow).where(DayRecordRow.run_id == run_id))
     db.execute(delete(PeriodSummary).where(PeriodSummary.run_id == run_id))
     db.execute(delete(AccessEvent).where(AccessEvent.run_id == run_id))

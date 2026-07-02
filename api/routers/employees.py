@@ -31,7 +31,8 @@ def _require_access(user, emp: Employee):
 @router.get("", response_model=list[EmployeeOut])
 def list_employees(q: Optional[str] = None, active_only: bool = False,
                    department_id: Optional[int] = None, no_schedule: bool = False,
-                   no_department: bool = False,
+                   no_department: bool = False, vehicle_only: bool = False,
+                   include_dismissed: bool = False,
                    limit: int = Query(2000, le=5000), offset: int = 0,
                    db: Session = Depends(get_db), user=Depends(get_current_user)):
     dep = scoped_department_id(user)
@@ -48,6 +49,10 @@ def list_employees(q: Optional[str] = None, active_only: bool = False,
         stmt = stmt.where(Employee.schedule_id.is_(None))
     if no_department:                       # «неразобранные» — без отдела
         stmt = stmt.where(Employee.department_id.is_(None))
+    if vehicle_only:                        # отмеченные «личный транспорт»
+        stmt = stmt.where(Employee.arrives_by_car.is_(True))
+    if not include_dismissed:               # уволенные скрыты, пока не попросили
+        stmt = stmt.where(Employee.dismissed_at.is_(None))
     if q:
         stmt = stmt.where(Employee.full_name.ilike(f"%{q}%"))
     stmt = stmt.order_by(Employee.full_name).limit(limit).offset(offset)
@@ -60,6 +65,8 @@ def bulk_assign(body: EmployeeBulkAssign, db: Session = Depends(get_db)):
     Передавайте только нужные поля; явный null — очистить."""
     fields = body.model_dump(exclude_unset=True)
     fields.pop("ids", None)
+    if fields.get("arrives_by_car", False) is None:   # null для bool = «снять флаг»
+        fields["arrives_by_car"] = False
     if not body.ids or not fields:
         return {"updated": 0}
     emps = db.scalars(select(Employee).where(Employee.id.in_(body.ids))).all()
@@ -105,6 +112,8 @@ def update_employee(emp_id: int, body: EmployeeUpdate, db: Session = Depends(get
         setattr(e, k, v)
         if k == "full_name":
             e.normalized_name = name_format(v)
+    if "dismissed_at" in data:              # увольнение гасит активность, восстановление возвращает
+        e.is_active = data["dismissed_at"] is None
     db.commit()
     db.refresh(e)
     return employee_out(e, Role(user.role))

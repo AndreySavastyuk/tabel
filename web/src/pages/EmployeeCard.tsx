@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  api, devLabel, type DayRecord, type Department, type Employee, type MonthSummary, type Schedule,
+  api, devLabel, fmtIsoDate, type DayRecord, type Department, type Employee, type MonthSummary, type Schedule,
 } from '../api'
 import { useAuth } from '../auth'
 import DayExplain from './DayExplain'
@@ -35,6 +35,7 @@ export default function EmployeeCard() {
   const [fOt, setFOt] = useState(false)
   const [fLez, setFLez] = useState(false)
   const [fCar, setFCar] = useState(false)
+  const [fDis, setFDis] = useState('')
 
   const startEdit = () => {
     if (!emp) return
@@ -44,6 +45,7 @@ export default function EmployeeCard() {
     setFOt(!!emp.overtime_tracked)
     setFLez(!!emp.lez_controlled)
     setFCar(!!emp.arrives_by_car)
+    setFDis(emp.dismissed_at ?? '')
     setEditing(true)
   }
   const save = async () => {
@@ -57,6 +59,7 @@ export default function EmployeeCard() {
         overtime_tracked: fOt,
         lez_controlled: fLez,
         arrives_by_car: fCar,
+        dismissed_at: fDis || null,
       })
       setEmp(updated)
       setEditing(false)
@@ -117,7 +120,11 @@ export default function EmployeeCard() {
   return (
     <div>
       <div className="pagehead">
-        <h2>{emp.full_name}</h2>
+        <h2>
+          {emp.full_name}
+          {emp.arrives_by_car && <span className="veh-badge" title="Личный транспорт — заезжает на машине">🚗</span>}
+          {emp.dismissed_at && <span className="dis-badge" title="Последний рабочий день">уволен {fmtIsoDate(emp.dismissed_at)}</span>}
+        </h2>
         <button className="ghost" onClick={() => nav('/employees')}>← К сотрудникам</button>
       </div>
       <div className="card empmeta">
@@ -128,8 +135,9 @@ export default function EmployeeCard() {
             <span><b>График:</b> {schedCode || 'не задан'}</span>
             {emp.fixed_time && <span><b>Фикс. время:</b> {emp.fixed_time}</span>}
             <span><b>Контроль ЛЭЗ:</b> {emp.lez_controlled ? 'да' : 'нет'}</span>
-            <span><b>Заезжает на машине:</b> {emp.arrives_by_car ? 'да' : 'нет'}</span>
+            <span><b>Заезжает на машине:</b> {emp.arrives_by_car ? '🚗 да' : 'нет'}</span>
             <span><b>Учёт переработок:</b> {emp.overtime_tracked ? 'да' : 'нет'}</span>
+            {emp.dismissed_at && <span><b>Уволен:</b> {fmtIsoDate(emp.dismissed_at)} (последний день)</span>}
             {isAdmin && <button className="ghost" onClick={startEdit}>Изменить</button>}
           </>
         ) : (
@@ -152,11 +160,15 @@ export default function EmployeeCard() {
             <label className="chk">
               <input type="checkbox" checked={fLez} onChange={(e) => setFLez(e.target.checked)} /> контроль ЛЭЗ
             </label>
-            <label className="chk">
-              <input type="checkbox" checked={fCar} onChange={(e) => setFCar(e.target.checked)} /> заезжает на машине
+            <label className="chk" title="Заезжает на территорию на машине: отметки ЛЭЗ может не быть — отклонение «Только внутренняя система» не заводится">
+              <input type="checkbox" checked={fCar} onChange={(e) => setFCar(e.target.checked)} /> 🚗 заезжает на машине
             </label>
             <label className="chk">
               <input type="checkbox" checked={fOt} onChange={(e) => setFOt(e.target.checked)} /> учёт переработок
+            </label>
+            <label title="Последний рабочий день. С этой даты отклонения дня не заводятся (сдача пропуска ломает отметки). Очистите дату, чтобы восстановить сотрудника">
+              Дата увольнения{' '}
+              <input type="date" value={fDis} onChange={(e) => setFDis(e.target.value)} />
             </label>
             <button disabled={saving} onClick={save}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
             <button className="ghost" disabled={saving} onClick={() => setEditing(false)}>Отмена</button>

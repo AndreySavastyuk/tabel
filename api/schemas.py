@@ -177,6 +177,7 @@ class EmployeeCreate(BaseModel):
     lez_controlled: bool = False
     arrives_by_car: bool = False
     overtime_tracked: bool = False
+    arrives_by_car: bool = False
     hourly_rate: Optional[float] = None
     is_active: bool = True
 
@@ -190,8 +191,10 @@ class EmployeeUpdate(BaseModel):
     lez_controlled: Optional[bool] = None
     arrives_by_car: Optional[bool] = None
     overtime_tracked: Optional[bool] = None
+    arrives_by_car: Optional[bool] = None
     hourly_rate: Optional[float] = None
     is_active: Optional[bool] = None
+    dismissed_at: Optional[date] = None     # дата увольнения; явный null — восстановить
 
 
 class EmployeeBulkAssign(BaseModel):
@@ -201,6 +204,7 @@ class EmployeeBulkAssign(BaseModel):
     department_id: Optional[int] = None
     cabinet: Optional[str] = None
     schedule_id: Optional[int] = None
+    arrives_by_car: Optional[bool] = None
 
 
 class CalendarEntryIn(BaseModel):
@@ -249,8 +253,10 @@ class EmployeeOut(BaseModel):
     lez_controlled: bool
     arrives_by_car: bool = False
     overtime_tracked: bool = False
+    arrives_by_car: bool = False
     hourly_rate: Optional[float] = None      # вырезается для не-money ролей
     is_active: bool
+    dismissed_at: Optional[date] = None      # последний рабочий день; null — работает
 
 
 def employee_out(emp, role: Role) -> EmployeeOut:

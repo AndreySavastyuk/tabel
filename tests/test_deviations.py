@@ -8,7 +8,7 @@ bulk/скоуп руководителя. Синтетический — на ч
 import os
 import sys
 import tempfile
-from datetime import datetime
+from datetime import date, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -186,6 +186,68 @@ def test_away_threshold_configurable(ctx):
     it = db.scalars(select(DeviationItem)).one()
     assert it.dev_code == "REENTRY_GAP" and it.away_minutes == 40
     db.close()
+
+
+def test_vehicle_strips_only_internal(ctx):
+    """У сотрудника с «личным транспортом» ONLY_INTERNAL вырезается до записи
+    (въехал на машине — отметки ЛЭЗ законно нет); остальные коды и другие
+    сотрудники не затронуты."""
+    _, TS, ids = ctx
+    db = TS()
+    db.get(Employee, ids["E"]).arrives_by_car = True
+    db.commit()
+    recs = {"E": [_dr("E", "10.04.2026", ["ONLY_INTERNAL", "MISSING_EXIT"])],
+            "F": [_dr("F", "10.04.2026", ["ONLY_INTERNAL"], dept="Офис")]}
+    ingestion.strip_vehicle_deviations(db, recs, {"E": ids["E"], "F": ids["F"]})
+    assert recs["E"][0].deviations == ["MISSING_EXIT"]
+    assert recs["F"][0].deviations == ["ONLY_INTERNAL"]
+    db.close()
+
+
+def test_dismissed_strips_from_dismissal_date(ctx):
+    """С даты увольнения отклонения дня вырезаются (сдача пропуска ломает
+    отметки): и коды движка, и сырые отметки ЛЭЗ (дневная сумма отлучек).
+    Дни ДО даты увольнения не трогаются."""
+    _, TS, ids = ctx
+    db = TS()
+    db.get(Employee, ids["E"]).dismissed_at = date(2026, 4, 10)
+    db.commit()
+    lez = [("12:00", "Выход"), ("13:00", "Вход")]
+    recs = {"E": [_dr("E", "09.04.2026", ["MISSING_EXIT"]),
+                  _dr("E", "10.04.2026", ["MISSING_EXIT", "ONLY_INTERNAL"], lez_events=lez)]}
+    ingestion.strip_dismissed_days(db, recs, {"E": ids["E"]})
+    assert recs["E"][0].deviations == ["MISSING_EXIT"]     # до увольнения — не тронут
+    assert recs["E"][1].deviations == [] and recs["E"][1].lez_events == []
+    db.close()
+
+
+def test_dismissed_api_flow(ctx):
+    """PATCH dismissed_at гасит is_active и скрывает сотрудника из списка по
+    умолчанию; include_dismissed=true возвращает; сброс даты восстанавливает."""
+    client, _, ids = ctx
+    admin = tok(client, "admin", "admin")
+    r = client.patch(f"/employees/{ids['E']}", json={"dismissed_at": "2026-04-10"}, headers=admin)
+    assert r.status_code == 200
+    assert r.json()["dismissed_at"] == "2026-04-10" and r.json()["is_active"] is False
+    names = {e["full_name"] for e in client.get("/employees", headers=admin).json()}
+    assert "E" not in names and "F" in names               # уволенный скрыт
+    shown = {e["full_name"] for e in
+             client.get("/employees?include_dismissed=true", headers=admin).json()}
+    assert "E" in shown                                     # по флагу — показан
+    r2 = client.patch(f"/employees/{ids['E']}", json={"dismissed_at": None}, headers=admin)
+    assert r2.json()["dismissed_at"] is None and r2.json()["is_active"] is True
+
+
+def test_vehicle_flag_patch_and_filter(ctx):
+    """Флаг «личный транспорт» правится через PATCH /employees/{id};
+    ?vehicle_only=true отдаёт только отмеченных."""
+    client, _, ids = ctx
+    admin = tok(client, "admin", "admin")
+    r = client.patch(f"/employees/{ids['E']}", json={"arrives_by_car": True}, headers=admin)
+    assert r.status_code == 200 and r.json()["arrives_by_car"] is True
+    names = {e["full_name"] for e in
+             client.get("/employees?vehicle_only=true", headers=admin).json()}
+    assert names == {"E"}
 
 
 # --- API ------------------------------------------------------------------

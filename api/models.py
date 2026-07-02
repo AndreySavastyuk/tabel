@@ -73,8 +73,10 @@ class Employee(Base):
     lez_controlled: Mapped[bool] = mapped_column(Boolean, default=False)
     arrives_by_car: Mapped[bool] = mapped_column(Boolean, default=False)  # заезжает на машине — не сверять с ЛЭЗ
     overtime_tracked: Mapped[bool] = mapped_column(Boolean, default=False)  # ведём учёт переработок
+    arrives_by_car: Mapped[bool] = mapped_column(Boolean, default=False)  # заезжает на машине (нет отметки ЛЭЗ — норма)
     hourly_rate: Mapped[float | None] = mapped_column(Numeric(10, 2))  # ₽/час (деньги)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    dismissed_at: Mapped[date | None] = mapped_column(Date)           # последний рабочий день; NULL — работает
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 

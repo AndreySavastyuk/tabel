@@ -29,6 +29,7 @@ export default function Deviations() {
   const [codeF, setCodeF] = useState('')
   const [nameF, setNameF] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('status')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [groupByName, setGroupByName] = useState(false)
   const [sel, setSel] = useState<Set<number>>(new Set())
   const [bulkStatus, setBulkStatus] = useState<DeviationStatus>('accepted')
@@ -60,14 +61,25 @@ export default function Deviations() {
     const rows = nf
       ? items.filter((i) => (i.employee_name ?? '').toLowerCase().includes(nf))
       : items.slice()
+    const dir = sortDir === 'asc' ? 1 : -1
     const byName = (a: DeviationItem, b: DeviationItem) =>
       (a.employee_name ?? '').localeCompare(b.employee_name ?? '', 'ru')
-    if (sortKey === 'date') rows.sort((a, b) => dateKey(a.work_date).localeCompare(dateKey(b.work_date)))
-    else if (sortKey === 'name') rows.sort((a, b) => byName(a, b) || dateKey(a.work_date).localeCompare(dateKey(b.work_date)))
-    else if (sortKey === 'away') rows.sort((a, b) => (b.away_minutes || 0) - (a.away_minutes || 0) || byName(a, b))
-    // 'status' — оставляем серверный порядок (status, work_date)
+    const byDate = (a: DeviationItem, b: DeviationItem) =>
+      dateKey(a.work_date).localeCompare(dateKey(b.work_date))
+    if (sortKey === 'date') rows.sort((a, b) => dir * byDate(a, b) || byName(a, b))
+    else if (sortKey === 'name') rows.sort((a, b) => dir * byName(a, b) || byDate(a, b))
+    else if (sortKey === 'away') {
+      // записи без времени отсутствия (не «выход с территории») — всегда в конце,
+      // сами выходы — по сумме отлучек в выбранном направлении
+      rows.sort((a, b) => {
+        const ha = a.dev_code === 'REENTRY_GAP' ? 0 : 1
+        const hb = b.dev_code === 'REENTRY_GAP' ? 0 : 1
+        if (ha !== hb) return ha - hb
+        return dir * ((a.away_minutes || 0) - (b.away_minutes || 0)) || byName(a, b)
+      })
+    } else if (sortDir === 'desc') rows.reverse()   // 'status': серверный порядок, перевёрнутый
     return rows
-  }, [items, nameF, sortKey])
+  }, [items, nameF, sortKey, sortDir])
 
   // Группировка по фамилии: карта employee -> строки + итог времени вне территории.
   const groups = useMemo(() => {
@@ -83,8 +95,16 @@ export default function Deviations() {
         employee_id, name: g.name, items: g.items, count: g.items.length,
         totalAway: g.items.reduce((s, i) => s + (i.away_minutes || 0), 0),
       }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-  }, [visible, groupByName])
+      .sort((a, b) => {
+        // при сортировке «по времени вне территории» группы идут по СУММЕ
+        // отлучек сотрудника в том же направлении, иначе — по алфавиту
+        if (sortKey === 'away') {
+          const dir = sortDir === 'asc' ? 1 : -1
+          return dir * (a.totalAway - b.totalAway) || a.name.localeCompare(b.name, 'ru')
+        }
+        return a.name.localeCompare(b.name, 'ru')
+      })
+  }, [visible, groupByName, sortKey, sortDir])
 
   const summary = useMemo(() => {
     const open = visible.filter((i) => i.status === 'new' || i.status === 'in_progress').length
@@ -243,13 +263,21 @@ export default function Deviations() {
           </select>
         </label>
         <label>Сортировка{' '}
-          <select value={sortKey} onChange={(e) => setSortKey(e.target.value as SortKey)}>
+          <select value={sortKey} onChange={(e) => {
+            const k = e.target.value as SortKey
+            setSortKey(k)
+            if (k === 'away') setSortDir('desc')   // выходы: сначала самые длинные
+          }}>
             <option value="status">по статусу</option>
             <option value="date">по дате</option>
             <option value="name">по фамилии</option>
             <option value="away">по времени вне территории</option>
           </select>
         </label>
+        <button type="button" className="ghost" title="Переключить направление сортировки"
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}>
+          {sortDir === 'asc' ? '↑ по возрастанию' : '↓ по убыванию'}
+        </button>
         <label className="chk">
           <input type="checkbox" checked={groupByName} onChange={(e) => setGroupByName(e.target.checked)} /> группировать по фамилии
         </label>

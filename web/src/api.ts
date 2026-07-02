@@ -81,8 +81,10 @@ export interface Employee {
   lez_controlled: boolean
   arrives_by_car?: boolean
   overtime_tracked?: boolean
+  arrives_by_car?: boolean
   hourly_rate?: number | null
   is_active: boolean
+  dismissed_at?: string | null   // ISO-дата последнего рабочего дня; null — работает
 }
 // --- поквартальный свод переработок ---
 export interface OvertimeRow {
@@ -417,6 +419,9 @@ export async function downloadExport(runId: number) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+// ISO-дата '2026-06-15' -> '15.06.2026' (отображение дат увольнения и т.п.)
+export const fmtIsoDate = (iso: string) => iso.split('-').reverse().join('.')
 
 // Коды отклонений -> русские подписи (зеркало engine.model.DEV_LABELS).
 export const DEV_LABELS: Record<string, string> = {
