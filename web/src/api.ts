@@ -79,6 +79,7 @@ export interface Employee {
   schedule_id?: number | null
   fixed_time?: string | null
   lez_controlled: boolean
+  arrives_by_car?: boolean
   overtime_tracked?: boolean
   hourly_rate?: number | null
   is_active: boolean

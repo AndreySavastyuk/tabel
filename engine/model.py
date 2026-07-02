@@ -46,6 +46,7 @@ class DayRecord:
     dept: Optional[str] = None
     cabinet: Optional[str] = None               # кабинет внутри отдела
     lez_controlled: bool = False                # обязан проходить ЛЭЗ
+    arrives_by_car: bool = False                # заезжает на машине — не сверять «нет ЛЭЗ»
     dual_tracked: bool = False                  # есть отметки И во внутренней, И в ЛЭЗ за период
     day_norm: float = 0.0
     absence: Optional[str] = None               # "отпуск"/"больничный"/"командировка"/None

@@ -340,7 +340,9 @@ def evaluate_deviations(dr, thresholds=None):
     cross = dr.dual_tracked or dr.lez_controlled
     if int_present and not lez_present:
         # отметка во внутренней есть, в ЛЭЗ нет — кандидат на «за отсутствующего».
-        if cross and not excused:
+        # «Заезжает на машине» — легальная причина отсутствия отметки ЛЭЗ (заехал
+        # через автопроезд), поэтому такой день не флагуем даже при dual_tracked.
+        if cross and not excused and not dr.arrives_by_car:
             dev.append(model.DEV_ONLY_INTERNAL)
     elif lez_present and not int_present:
         if dr.dual_tracked and not excused:

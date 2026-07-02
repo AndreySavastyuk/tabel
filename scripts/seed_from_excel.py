@@ -114,6 +114,7 @@ def import_reference(db, wp):
         emp.schedule_id = sched_ids.get(sc) if sc else None
         emp.fixed_time = ref.fixed_times.get(nm)
         emp.lez_controlled = ref.is_lez_controlled(nm)
+        emp.arrives_by_car = ref.is_arrives_by_car(nm)
         by_norm[nm] = emp
         if not db.query(EmployeeAlias).filter_by(employee_id=emp.id, normalized_name=nm).first():
             db.add(EmployeeAlias(employee_id=emp.id, raw_name=nm, normalized_name=nm,

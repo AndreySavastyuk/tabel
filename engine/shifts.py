@@ -177,6 +177,7 @@ def build_day_records(rebuild, internal_base, lez_base, ref=None,
                 dr.cabinet = ref.cabinet(name)
                 dr.schedule = sched
                 dr.lez_controlled = ref.is_lez_controlled(name)
+                dr.arrives_by_car = ref.is_arrives_by_car(name)
                 window = ref.lunch.get(sched) if sched else None
                 if dr.entry and dr.exit and window:
                     dr.lunch_deducted = compute.compute_lunch_hours(dr.entry, dr.exit, window)

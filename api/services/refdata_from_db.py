@@ -51,6 +51,7 @@ def build_refdata(db: Session) -> RefData:
         if e.fixed_time:
             ref.fixed_times[nm] = e.fixed_time
         ref.lez_controlled[nm] = bool(e.lez_controlled)
+        ref.arrives_by_car[nm] = bool(e.arrives_by_car)
 
     # В зачёт нормы идут ТОЛЬКО подтверждённые отсутствия. отпуск/больничный/
     # командировка создаются сразу approved (факты от кадров/бухгалтерии),

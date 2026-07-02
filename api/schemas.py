@@ -175,6 +175,7 @@ class EmployeeCreate(BaseModel):
     schedule_id: Optional[int] = None
     fixed_time: Optional[str] = None
     lez_controlled: bool = False
+    arrives_by_car: bool = False
     overtime_tracked: bool = False
     hourly_rate: Optional[float] = None
     is_active: bool = True
@@ -187,6 +188,7 @@ class EmployeeUpdate(BaseModel):
     schedule_id: Optional[int] = None
     fixed_time: Optional[str] = None
     lez_controlled: Optional[bool] = None
+    arrives_by_car: Optional[bool] = None
     overtime_tracked: Optional[bool] = None
     hourly_rate: Optional[float] = None
     is_active: Optional[bool] = None
@@ -245,6 +247,7 @@ class EmployeeOut(BaseModel):
     schedule_id: Optional[int] = None
     fixed_time: Optional[str] = None
     lez_controlled: bool
+    arrives_by_car: bool = False
     overtime_tracked: bool = False
     hourly_rate: Optional[float] = None      # вырезается для не-money ролей
     is_active: bool

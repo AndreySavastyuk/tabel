@@ -24,7 +24,8 @@ from . import model
 SETTINGS_FILE = "Настройки.json"
 
 EMP_REF_FILE = "Справочник_сотрудников.xlsx"
-EMP_REF_HEADERS = ["ФИО", "Отдел", "Кабинет", "График", "Фикс.время", "Контроль ЛЭЗ"]
+EMP_REF_HEADERS = ["ФИО", "Отдел", "Кабинет", "График", "Фикс.время", "Контроль ЛЭЗ",
+                   "Заезжает на машине"]
 NORMS_FILE = "Графики_нормы.xlsx"
 NORMS_HEADERS = ["График", "Месяц", "Норма", "Начало смены", "Длит.смены", "Обед нач", "Обед кон"]
 ABSENCE_FILE = "Отсутствия.xlsx"
@@ -40,6 +41,7 @@ class RefData:
     cabinet_by_name: dict = field(default_factory=dict)   # name -> кабинет
     schedule_by_name: dict = field(default_factory=dict)  # name -> график
     lez_controlled: dict = field(default_factory=dict)    # name -> bool
+    arrives_by_car: dict = field(default_factory=dict)    # name -> bool (заезжает на машине)
     norms: dict = field(default_factory=dict)             # (график, "YYYY-MM") -> часы
     shift_start: dict = field(default_factory=dict)       # график -> "HH:MM"
     shift_len: dict = field(default_factory=dict)         # график -> часы (float)
@@ -57,6 +59,9 @@ class RefData:
 
     def is_lez_controlled(self, name):
         return bool(self.lez_controlled.get(name, False))
+
+    def is_arrives_by_car(self, name):
+        return bool(self.arrives_by_car.get(name, False))
 
     def absence_on(self, name, d):
         """Тип отсутствия на дату d (datetime.date) или None."""
@@ -149,6 +154,7 @@ def _load_employees_ref(path, ref, nf):
     c_sched = _find_col(cols, "график")
     c_fix = _find_col(cols, "фикс")
     c_lez = _find_col(cols, "контрользэз", "лэз", "проходная")
+    c_car = _find_col(cols, "машина", "заезжает", "авто")
     if c_fio is None:
         return
     for _, row in df.iterrows():
@@ -167,6 +173,8 @@ def _load_employees_ref(path, ref, nf):
                 ref.fixed_times[name] = t
         if c_lez:
             ref.lez_controlled[name] = _as_bool(row[c_lez])
+        if c_car:
+            ref.arrives_by_car[name] = _as_bool(row[c_car])
 
 
 def _load_norms_ref(path, ref):

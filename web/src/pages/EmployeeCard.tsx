@@ -33,6 +33,8 @@ export default function EmployeeCard() {
   const [fCab, setFCab] = useState('')
   const [fSched, setFSched] = useState('')
   const [fOt, setFOt] = useState(false)
+  const [fLez, setFLez] = useState(false)
+  const [fCar, setFCar] = useState(false)
 
   const startEdit = () => {
     if (!emp) return
@@ -40,6 +42,8 @@ export default function EmployeeCard() {
     setFCab(emp.cabinet ?? '')
     setFSched(emp.schedule_id ? String(emp.schedule_id) : '')
     setFOt(!!emp.overtime_tracked)
+    setFLez(!!emp.lez_controlled)
+    setFCar(!!emp.arrives_by_car)
     setEditing(true)
   }
   const save = async () => {
@@ -51,6 +55,8 @@ export default function EmployeeCard() {
         cabinet: fCab.trim() || null,
         schedule_id: fSched ? Number(fSched) : null,
         overtime_tracked: fOt,
+        lez_controlled: fLez,
+        arrives_by_car: fCar,
       })
       setEmp(updated)
       setEditing(false)
@@ -122,6 +128,7 @@ export default function EmployeeCard() {
             <span><b>График:</b> {schedCode || 'не задан'}</span>
             {emp.fixed_time && <span><b>Фикс. время:</b> {emp.fixed_time}</span>}
             <span><b>Контроль ЛЭЗ:</b> {emp.lez_controlled ? 'да' : 'нет'}</span>
+            <span><b>Заезжает на машине:</b> {emp.arrives_by_car ? 'да' : 'нет'}</span>
             <span><b>Учёт переработок:</b> {emp.overtime_tracked ? 'да' : 'нет'}</span>
             {isAdmin && <button className="ghost" onClick={startEdit}>Изменить</button>}
           </>
@@ -141,6 +148,12 @@ export default function EmployeeCard() {
                 <option value="">не задан</option>
                 {scheds.map((s) => <option key={s.id} value={s.id}>{s.code}</option>)}
               </select>
+            </label>
+            <label className="chk">
+              <input type="checkbox" checked={fLez} onChange={(e) => setFLez(e.target.checked)} /> контроль ЛЭЗ
+            </label>
+            <label className="chk">
+              <input type="checkbox" checked={fCar} onChange={(e) => setFCar(e.target.checked)} /> заезжает на машине
             </label>
             <label className="chk">
               <input type="checkbox" checked={fOt} onChange={(e) => setFOt(e.target.checked)} /> учёт переработок

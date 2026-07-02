@@ -71,6 +71,7 @@ class Employee(Base):
     schedule_id: Mapped[int | None] = mapped_column(ForeignKey("schedules.id"))
     fixed_time: Mapped[str | None] = mapped_column(String(5))          # "HH:MM"
     lez_controlled: Mapped[bool] = mapped_column(Boolean, default=False)
+    arrives_by_car: Mapped[bool] = mapped_column(Boolean, default=False)  # заезжает на машине — не сверять с ЛЭЗ
     overtime_tracked: Mapped[bool] = mapped_column(Boolean, default=False)  # ведём учёт переработок
     hourly_rate: Mapped[float | None] = mapped_column(Numeric(10, 2))  # ₽/час (деньги)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
