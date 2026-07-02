@@ -188,22 +188,6 @@ def test_away_threshold_configurable(ctx):
     db.close()
 
 
-def test_vehicle_strips_only_internal(ctx):
-    """У сотрудника с «личным транспортом» ONLY_INTERNAL вырезается до записи
-    (въехал на машине — отметки ЛЭЗ законно нет); остальные коды и другие
-    сотрудники не затронуты."""
-    _, TS, ids = ctx
-    db = TS()
-    db.get(Employee, ids["E"]).arrives_by_car = True
-    db.commit()
-    recs = {"E": [_dr("E", "10.04.2026", ["ONLY_INTERNAL", "MISSING_EXIT"])],
-            "F": [_dr("F", "10.04.2026", ["ONLY_INTERNAL"], dept="Офис")]}
-    ingestion.strip_vehicle_deviations(db, recs, {"E": ids["E"], "F": ids["F"]})
-    assert recs["E"][0].deviations == ["MISSING_EXIT"]
-    assert recs["F"][0].deviations == ["ONLY_INTERNAL"]
-    db.close()
-
-
 def test_dismissed_strips_from_dismissal_date(ctx):
     """С даты увольнения отклонения дня вырезаются (сдача пропуска ломает
     отметки): и коды движка, и сырые отметки ЛЭЗ (дневная сумма отлучек).

@@ -81,7 +81,6 @@ export interface Employee {
   lez_controlled: boolean
   arrives_by_car?: boolean
   overtime_tracked?: boolean
-  arrives_by_car?: boolean
   hourly_rate?: number | null
   is_active: boolean
   dismissed_at?: string | null   // ISO-дата последнего рабочего дня; null — работает
