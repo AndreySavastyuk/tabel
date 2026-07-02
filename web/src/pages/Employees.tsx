@@ -30,6 +30,12 @@ export default function Employees() {
 
   const deptName = useMemo(() => Object.fromEntries(depts.map((d) => [d.id, d.name])), [depts])
   const schedCode = useMemo(() => Object.fromEntries(scheds.map((s) => [s.id, s.code])), [scheds])
+  const stats = useMemo(() => ({
+    active: rows.filter((e) => e.is_active).length,
+    noDept: rows.filter((e) => !e.department_id).length,
+    noSchedule: rows.filter((e) => !e.schedule_id).length,
+    lez: rows.filter((e) => e.lez_controlled).length,
+  }), [rows])
 
   const load = async () => {
     setLoading(true)
@@ -118,6 +124,30 @@ export default function Employees() {
       </div>
       {err && <div className="error">{err}</div>}
       {msg && <div className="ok-box">{msg}</div>}
+
+      <div className="metric-grid">
+        <div className="metric-card">
+          <div className="metric-label">Активные сотрудники</div>
+          <div className="metric-value">{stats.active}</div>
+          <div className="metric-note">в текущем списке</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Без отдела</div>
+          <div className="metric-value">{stats.noDept}</div>
+          <div className="metric-note">нужно назначить подразделение</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Без графика</div>
+          <div className="metric-value">{stats.noSchedule}</div>
+          <div className="metric-note">не попадут в норму корректно</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Контроль ЛЭЗ</div>
+          <div className="metric-value">{stats.lez}</div>
+          <div className="metric-note">сверка проходной</div>
+        </div>
+      </div>
+
       {noDept && isAdmin && (
         <div className="muted" style={{ marginBottom: 8 }}>
           Очередь «без отдела». Назначьте отдел: отметьте строки и панель выше, либо{' '}

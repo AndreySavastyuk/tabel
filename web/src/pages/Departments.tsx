@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, type Department, type Employee, type Schedule } from '../api'
 import { useAuth } from '../auth'
@@ -26,24 +26,45 @@ export default function Departments() {
   // Руководитель отдела видит только свой отдел (бэкенд так же скоупит /employees).
   const scopeDept = user?.role === 'dept_head' ? user.department_id ?? -1 : null
 
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const [ds, es, ss] = await Promise.all([
-          api.get<Department[]>('/departments'),
-          api.get<Employee[]>('/employees?limit=5000'),
-          api.get<Schedule[]>('/schedules'),
-        ])
-        setDepts(ds)
-        setEmps(es)
-        setScheds(ss)
-      } catch (e) {
-        setErr((e as Error).message)
-      } finally {
-        setLoading(false)
-      }
-    })()
+  const load = useCallback(async () => {
+    try {
+      const [ds, es, ss] = await Promise.all([
+        api.get<Department[]>('/departments'),
+        api.get<Employee[]>('/employees?limit=5000'),
+        api.get<Schedule[]>('/schedules'),
+      ])
+      setDepts(ds)
+      setEmps(es)
+      setScheds(ss)
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setLoading(false)
+    }
   }, [])
+  useEffect(() => { load() }, [load])
+
+  // Редактирование (только Кадры/Админ): переименование в раскрытой карточке
+  // отдела + добавление нового отдела. Список остаётся свёрнутым по умолчанию.
+  const isAdmin = user?.role === 'admin_hr'
+  const [newDept, setNewDept] = useState('')
+  const [renameId, setRenameId] = useState<number | null>(null)
+  const [renameVal, setRenameVal] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const addDept = async () => {
+    if (!newDept.trim()) return
+    setBusy(true); setErr('')
+    try { await api.post('/departments', { name: newDept.trim() }); setNewDept(''); await load() }
+    catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
+  const saveRename = async (d: Department) => {
+    setBusy(true); setErr('')
+    try {
+      await api.patch(`/departments/${d.id}`, { name: renameVal.trim(), parent_id: d.parent_id ?? null })
+      setRenameId(null); await load()
+    } catch (e) { setErr((e as Error).message) } finally { setBusy(false) }
+  }
 
   const schedCode = useMemo(
     () => Object.fromEntries(scheds.map((s) => [s.id, s.code])),
@@ -148,6 +169,13 @@ export default function Departments() {
         <div className="muted">Загрузка…</div>
       ) : (
         <>
+          {isAdmin && (
+            <div className="searchbar" style={{ marginBottom: 10 }}>
+              <input placeholder="Новый отдел" value={newDept}
+                     onChange={(e) => setNewDept(e.target.value)} />
+              <button disabled={busy || !newDept.trim()} onClick={addDept}>Добавить отдел</button>
+            </div>
+          )}
           <div className="muted" style={{ marginBottom: 8 }}>
             {searchMode
               ? `Найдено сотрудников: ${totalMatched} в ${view.length} отд.`
@@ -197,6 +225,21 @@ export default function Departments() {
                       <tr>
                         <td></td>
                         <td colSpan={3} style={{ padding: 0 }}>
+                          {isAdmin && g.id != null && (
+                            <div className="searchbar" style={{ padding: '8px 12px' }}>
+                              {renameId === g.id ? (
+                                <>
+                                  <input value={renameVal} onChange={(e) => setRenameVal(e.target.value)} />
+                                  <button disabled={busy || !renameVal.trim()}
+                                          onClick={() => saveRename(depts.find((x) => x.id === g.id)!)}>Сохранить</button>
+                                  <button className="ghost" onClick={() => setRenameId(null)}>Отмена</button>
+                                </>
+                              ) : (
+                                <button className="ghost"
+                                        onClick={() => { setRenameId(g.id); setRenameVal(g.name) }}>Переименовать отдел</button>
+                              )}
+                            </div>
+                          )}
                           {list.length === 0 ? (
                             <div className="muted" style={{ padding: '8px 12px' }}>
                               Нет сотрудников по текущему фильтру

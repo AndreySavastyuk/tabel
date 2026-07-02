@@ -32,12 +32,14 @@ export default function EmployeeCard() {
   const [fDept, setFDept] = useState('')
   const [fCab, setFCab] = useState('')
   const [fSched, setFSched] = useState('')
+  const [fOt, setFOt] = useState(false)
 
   const startEdit = () => {
     if (!emp) return
     setFDept(emp.department_id ? String(emp.department_id) : '')
     setFCab(emp.cabinet ?? '')
     setFSched(emp.schedule_id ? String(emp.schedule_id) : '')
+    setFOt(!!emp.overtime_tracked)
     setEditing(true)
   }
   const save = async () => {
@@ -48,6 +50,7 @@ export default function EmployeeCard() {
         department_id: fDept ? Number(fDept) : null,
         cabinet: fCab.trim() || null,
         schedule_id: fSched ? Number(fSched) : null,
+        overtime_tracked: fOt,
       })
       setEmp(updated)
       setEditing(false)
@@ -90,6 +93,18 @@ export default function EmployeeCard() {
   const deptName = useMemo(() => depts.find((d) => d.id === emp?.department_id)?.name, [depts, emp])
   const schedCode = useMemo(() => scheds.find((s) => s.id === emp?.schedule_id)?.code, [scheds, emp])
 
+  // Переработки по кварталам (сумма месячных overtime_total), по годам-кварталам.
+  const quarters = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const mo of months) {
+      const [y, mm] = mo.month.split('-')
+      const q = Math.floor((Number(mm) - 1) / 3) + 1
+      const k = `${y}·Q${q}`
+      m.set(k, (m.get(k) ?? 0) + mo.overtime_total)
+    }
+    return [...m.entries()].filter(([, h]) => h > 0).sort((a, b) => (a[0] < b[0] ? 1 : -1))
+  }, [months])
+
   if (err) return <div className="error">{err}</div>
   if (!emp) return <div className="muted">Загрузка…</div>
 
@@ -107,6 +122,7 @@ export default function EmployeeCard() {
             <span><b>График:</b> {schedCode || 'не задан'}</span>
             {emp.fixed_time && <span><b>Фикс. время:</b> {emp.fixed_time}</span>}
             <span><b>Контроль ЛЭЗ:</b> {emp.lez_controlled ? 'да' : 'нет'}</span>
+            <span><b>Учёт переработок:</b> {emp.overtime_tracked ? 'да' : 'нет'}</span>
             {isAdmin && <button className="ghost" onClick={startEdit}>Изменить</button>}
           </>
         ) : (
@@ -126,11 +142,32 @@ export default function EmployeeCard() {
                 {scheds.map((s) => <option key={s.id} value={s.id}>{s.code}</option>)}
               </select>
             </label>
+            <label className="chk">
+              <input type="checkbox" checked={fOt} onChange={(e) => setFOt(e.target.checked)} /> учёт переработок
+            </label>
             <button disabled={saving} onClick={save}>{saving ? 'Сохранение…' : 'Сохранить'}</button>
             <button className="ghost" disabled={saving} onClick={() => setEditing(false)}>Отмена</button>
           </>
         )}
       </div>
+
+      {(emp.overtime_tracked || quarters.length > 0) && (
+        <>
+          <h3 style={{ marginTop: 18 }}>Переработки по кварталам</h3>
+          {quarters.length === 0 ? (
+            <div className="muted">Переработок нет.</div>
+          ) : (
+            <div className="quarters">
+              {quarters.map(([k, h]) => (
+                <div key={k} className="qcard">
+                  <div className="muted">{k}</div>
+                  <div className="qval">{h.toFixed(2)} ч</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       <h3 style={{ marginTop: 18 }}>По месяцам</h3>
       {!months.length ? <div className="muted">Нет данных по прогонам. Постройте табель на «Прогонах».</div> : (
@@ -138,7 +175,7 @@ export default function EmployeeCard() {
           <thead>
             <tr>
               <th>Месяц</th><th>Раб. дней</th><th>Отработано, ч</th><th>Норма, ч</th>
-              <th>± к норме</th><th>Переработка, ч</th><th>Опозданий</th><th>Отсутствий</th><th></th>
+              <th>± к норме</th><th>Переработка, ч</th><th>Опозданий</th><th>Отсутствий</th><th></th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -158,10 +195,12 @@ export default function EmployeeCard() {
                     <td className={m.late_days ? 'warn-cell' : ''}>{m.late_days ? `${m.late_days} (${m.late_minutes} мин)` : '—'}</td>
                     <td>{m.absence_days || '—'}</td>
                     <td className="link">{open ? '▲ свернуть' : '▼ по дням'}</td>
+                    <td><button className="ghost" title="Печатная карточка за месяц"
+                                onClick={(ev) => { ev.stopPropagation(); nav(`/employees/${eid}/report?month=${m.month}`) }}>Печать</button></td>
                   </tr>
                   {open && (
                     <tr key={m.month + '_days'}>
-                      <td colSpan={9} style={{ padding: 0 }}><DayTable rows={days} eid={eid} /></td>
+                      <td colSpan={10} style={{ padding: 0 }}><DayTable rows={days} eid={eid} /></td>
                     </tr>
                   )}
                 </>

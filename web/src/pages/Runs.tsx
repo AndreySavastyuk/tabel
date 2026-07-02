@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, downloadExport, uploadFile, type Run, type UploadSource } from '../api'
 import { useAuth } from '../auth'
@@ -25,6 +25,12 @@ export default function Runs() {
   const [month, setMonth] = useState('')
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
+  const stats = useMemo(() => ({
+    total: runs.length,
+    final: runs.filter((r) => r.is_final).length,
+    active: runs.filter((r) => r.status === 'queued' || r.status === 'running').length,
+    failed: runs.filter((r) => r.status === 'failed').length,
+  }), [runs])
 
   const siblingOf = (r: Run) =>
     runs.find((o) => o.id !== r.id && o.status === 'done' && !!r.period_label && o.period_label === r.period_label)
@@ -91,6 +97,29 @@ export default function Runs() {
         <h2>Прогоны табеля</h2>
       </div>
       {err && <div className="error">{err}</div>}
+
+      <div className="metric-grid">
+        <div className="metric-card">
+          <div className="metric-label">Всего прогонов</div>
+          <div className="metric-value">{stats.total}</div>
+          <div className="metric-note">история расчетов табеля</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Финальные</div>
+          <div className="metric-value">{stats.final}</div>
+          <div className="metric-note">утверждены для периода</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">В расчете</div>
+          <div className="metric-value">{stats.active}</div>
+          <div className="metric-note">обновляются автоматически</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Ошибки</div>
+          <div className="metric-value">{stats.failed}</div>
+          <div className="metric-note">требуют проверки загрузок</div>
+        </div>
+      </div>
 
       {isAdmin && (
         <div className="card panel">

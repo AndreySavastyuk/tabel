@@ -59,6 +59,8 @@ export default function MonthClose() {
     }
   }
   const exportXlsx = () => sum?.run && downloadExport(sum.run.id).catch((e) => setErr((e as Error).message))
+  const blockers = sum?.checklist.reduce((n, c) => n + (!c.ok && c.blocking ? c.count : 0), 0) ?? 0
+  const warnings = sum?.checklist.reduce((n, c) => n + (!c.ok && !c.blocking ? c.count : 0), 0) ?? 0
 
   return (
     <div>
@@ -85,6 +87,29 @@ export default function MonthClose() {
 
       {sum && (
         <>
+          <div className="metric-grid">
+            <div className="metric-card">
+              <div className="metric-label">Период</div>
+              <div className="metric-value">{sum.period}</div>
+              <div className="metric-note">{PERIOD_STATUS_LABEL[sum.status]}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Активный прогон</div>
+              <div className="metric-value">{sum.run ? `№${sum.run.id}` : 'нет'}</div>
+              <div className="metric-note">{sum.run?.status ?? 'постройте табель'}</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Данные</div>
+              <div className="metric-value">{sum.run?.n_employees ?? '—'}</div>
+              <div className="metric-note">{sum.run?.n_day_records ?? '—'} дневных записей</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-label">Готовность</div>
+              <div className="metric-value">{sum.export_ready ? 'Готово' : blockers}</div>
+              <div className="metric-note">{sum.export_ready ? 'можно закрывать' : `блокеров, предупреждений: ${warnings}`}</div>
+            </div>
+          </div>
+
           <div className="card panel">
             <div className="absrow">
               <span><b>Активный прогон:</b> {sum.run ? `№${sum.run.id} (${sum.run.status})` : 'нет'}</span>
@@ -112,13 +137,12 @@ export default function MonthClose() {
           </div>
 
           <h3 style={{ marginTop: 18 }}>Готовность к закрытию</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10 }}>
+          <div className="readiness-grid">
             {sum.checklist.map((c) => {
-              const color = c.ok ? '#1a7f37' : c.blocking ? '#b00020' : '#b58100'
               return (
-                <div key={c.key} className="card" style={{ borderLeft: `4px solid ${color}`, padding: '10px 12px' }}>
-                  <div><b>{c.ok ? '✓' : '✗'} {c.label}</b></div>
-                  <div className="muted">
+                <div key={c.key} className={`card readiness-card ${c.ok ? 'ok' : c.blocking ? 'blocking' : 'warn'}`}>
+                  <div className="readiness-title">{c.ok ? '✓' : '✗'} {c.label}</div>
+                  <div className="readiness-meta">
                     {c.ok ? 'готово' : `${c.count} · ${c.blocking ? 'блокер' : 'предупреждение'}`}
                   </div>
                   {!c.ok && c.link && (

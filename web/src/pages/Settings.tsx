@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
-import { api, type Cabinet, type Department, type Threshold } from '../api'
+import { api, type Cabinet, type Threshold } from '../api'
 import { useAuth } from '../auth'
 
 export default function Settings() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin_hr'
 
-  const [depts, setDepts] = useState<Department[]>([])
-  const [deptEdit, setDeptEdit] = useState<Record<number, string>>({})
-  const [newDept, setNewDept] = useState('')
   const [cabs, setCabs] = useState<Cabinet[]>([])
   const [cabEdit, setCabEdit] = useState<Record<string, string>>({})
   const [thr, setThr] = useState<Threshold[]>([])
@@ -19,13 +16,11 @@ export default function Settings() {
   const load = useCallback(async () => {
     setErr('')
     try {
-      const [d, c, t] = await Promise.all([
-        api.get<Department[]>('/departments'),
+      const [c, t] = await Promise.all([
         api.get<Cabinet[]>('/settings/cabinets'),
         api.get<Threshold[]>('/settings/thresholds'),
       ])
-      setDepts(d); setCabs(c); setThr(t)
-      setDeptEdit(Object.fromEntries(d.map((x) => [x.id, x.name])))
+      setCabs(c); setThr(t)
       setCabEdit(Object.fromEntries(c.map((x) => [x.name, x.name])))
       setThrEdit(Object.fromEntries(t.map((x) => [x.key, String(x.value)])))
     } catch (e) {
@@ -41,15 +36,6 @@ export default function Settings() {
     try { await fn() } catch (e) { setErr((e as Error).message) }
   }
 
-  const saveDept = (d: Department) => wrap(async () => {
-    await api.patch(`/departments/${d.id}`, { name: deptEdit[d.id].trim(), parent_id: d.parent_id ?? null })
-    setMsg('Отдел переименован.'); await load()
-  })
-  const addDept = wrap(async () => {
-    if (!newDept.trim()) return
-    await api.post('/departments', { name: newDept.trim() })
-    setMsg('Отдел добавлен.'); setNewDept(''); await load()
-  })
   const renameCab = (oldName: string) => wrap(async () => {
     const r = await api.post<{ updated: number }>('/settings/cabinets/rename',
       { old_name: oldName, new_name: cabEdit[oldName] })
@@ -77,28 +63,8 @@ export default function Settings() {
       {err && <div className="error">{err}</div>}
       {msg && <div className="ok-box">{msg}</div>}
 
-      <div className="card panel">
-        <h3>Отделы <span className="muted">({depts.length})</span></h3>
-        <table className="grid">
-          <tbody>
-            {depts.map((d) => (
-              <tr key={d.id}>
-                <td style={{ width: '70%' }}>
-                  <input value={deptEdit[d.id] ?? ''} style={{ width: '100%' }}
-                         onChange={(e) => setDeptEdit((s) => ({ ...s, [d.id]: e.target.value }))} />
-                </td>
-                <td>
-                  <button disabled={!deptEdit[d.id]?.trim() || deptEdit[d.id] === d.name}
-                          onClick={saveDept(d)}>Сохранить</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="absrow" style={{ marginTop: 8 }}>
-          <input placeholder="Новый отдел" value={newDept} onChange={(e) => setNewDept(e.target.value)} />
-          <button disabled={!newDept.trim()} onClick={addDept}>Добавить отдел</button>
-        </div>
+      <div className="muted" style={{ marginBottom: 12 }}>
+        Отделы и графики — на соседних вкладках раздела «Администрирование».
       </div>
 
       <div className="card panel">

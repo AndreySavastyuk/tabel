@@ -7,8 +7,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .routers import (absences, aliases, assign, auth, calendar, departments,
-                      deviations, employees, periods, reference, runs, schedules,
-                      settings as settings_router, uploads, users)
+                      deviations, employees, overtime, periods, reference, runs,
+                      schedules, settings as settings_router, uploads, users)
 
 # В проде прячем интерактивную документацию (Swagger/redoc/openapi-схему).
 _docs = {"docs_url": None, "redoc_url": None, "openapi_url": None} if settings.is_prod else {}
@@ -50,6 +50,7 @@ app.include_router(deviations.router)
 app.include_router(periods.router)
 app.include_router(absences.router)
 app.include_router(calendar.router)
+app.include_router(overtime.router)
 
 
 @app.get("/health", tags=["meta"])

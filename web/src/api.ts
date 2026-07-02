@@ -30,8 +30,12 @@ async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
     if (res.status === 401) clearTokens()
     throw new Error(detail)
   }
+  // Пустой ответ (204 No Content на DELETE и т.п.) не парсим как JSON —
+  // иначе res.json() бросает "Unexpected end of JSON input".
   const ct = res.headers.get('content-type') || ''
-  return (ct.includes('json') ? res.json() : res.text()) as Promise<T>
+  const text = await res.text()
+  if (!text) return undefined as T
+  return (ct.includes('json') ? JSON.parse(text) : text) as T
 }
 
 export const api = {
@@ -75,8 +79,26 @@ export interface Employee {
   schedule_id?: number | null
   fixed_time?: string | null
   lez_controlled: boolean
+  overtime_tracked?: boolean
   hourly_rate?: number | null
   is_active: boolean
+}
+// --- поквартальный свод переработок ---
+export interface OvertimeRow {
+  employee_id: number
+  employee_name: string
+  dept_name?: string | null
+  overtime_tracked: boolean
+  q1: number
+  q2: number
+  q3: number
+  q4: number
+  total: number
+}
+export interface OvertimeReport {
+  year: number
+  years: number[]
+  rows: OvertimeRow[]
 }
 export interface Department {
   id: number

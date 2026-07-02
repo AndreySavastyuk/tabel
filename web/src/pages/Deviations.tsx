@@ -86,6 +86,15 @@ export default function Deviations() {
       .sort((a, b) => a.name.localeCompare(b.name, 'ru'))
   }, [visible, groupByName])
 
+  const summary = useMemo(() => {
+    const open = visible.filter((i) => i.status === 'new' || i.status === 'in_progress').length
+    const critical = visible.filter((i) =>
+      i.dev_code === 'MISSING_ENTRY' || i.dev_code === 'MISSING_EXIT' || i.dev_code === 'IMPLAUSIBLE_HOURS').length
+    const awayMinutes = visible.reduce((s, i) => s + (i.away_minutes || 0), 0)
+    const pendingAway = visible.filter((i) => i.dev_code === 'REENTRY_GAP' && i.time_decision === 'pending').length
+    return { open, critical, awayMinutes, pendingAway }
+  }, [visible])
+
   const toggle = (id: number) => setSel((s) => {
     const n = new Set(s)
     if (n.has(id)) n.delete(id)
@@ -172,7 +181,7 @@ export default function Deviations() {
       <td className="bad">{devCell(it)}</td>
       <td>{awayCell(it)}</td>
       <td>
-        <select value={it.status} style={{ background: STATUS_COLOR[it.status] }}
+        <select className="status-select" value={it.status} style={{ background: STATUS_COLOR[it.status] }}
                 onChange={(e) => setStatus(it.id, e.target.value as DeviationStatus)}>
           {DEV_STATUS_ORDER.map((s) => <option key={s} value={s}>{DEV_STATUS_LABEL[s]}</option>)}
         </select>
@@ -194,6 +203,24 @@ export default function Deviations() {
       <div className="pagehead"><h2>Отклонения <span className="muted">({visible.length})</span></h2></div>
       {err && <div className="error">{err}</div>}
       {msg && <div className="ok-box">{msg}</div>}
+
+      <div className="metric-grid">
+        <div className="metric-card">
+          <div className="metric-label">Открыто в очереди</div>
+          <div className="metric-value">{summary.open}</div>
+          <div className="metric-note">новые и в работе</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Критичные типы</div>
+          <div className="metric-value">{summary.critical}</div>
+          <div className="metric-note">нет входа/выхода, странные часы</div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-label">Вне территории</div>
+          <div className="metric-value">{fmtH(summary.awayMinutes)} ч</div>
+          <div className="metric-note">{summary.pendingAway} без решения</div>
+        </div>
+      </div>
 
       <p className="muted" style={{ margin: '0 0 12px', maxWidth: 960 }}>
         <b>«Вне территории»</b> — суммарное время выходов за территорию (ЛЭЗ) за день, интервалы показаны столбиком.
